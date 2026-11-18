@@ -10,7 +10,8 @@
     "dev": "nuxt dev --port 4700",
     "build": "nuxt build",
     "test": "node --test test/*.test.ts",
-    "postinstall": "nuxt prepare"
+    "postinstall": "nuxt prepare",
+    "site:build": "tailwindcss -i site/style.css -o site/dist/style.css --minify && cp site/index.html site/dist/ && cp -R site/img site/dist/"
   },
   "dependencies": {
     "@phosphor-icons/vue": "^2.2.1",
@@ -24,6 +25,7 @@
     ]
   },
   "devDependencies": {
+    "@tailwindcss/cli": "4.3.5",
     "@tailwindcss/vite": "^4.3.5",
     "@types/node": "^26.6.6",
     "tailwindcss": "^4.3.5",

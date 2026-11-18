@@ -5,3 +5,4 @@ node_modules
 desktop/engine
 desktop/target
 desktop/gen
+site/dist

@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "flat-type-hierarchy",
+        "value": "*",
+        "files": [
+          "site/index.html"
+        ],
+        "createdAt": "2026-11-18T17:14:00.391Z",
+        "reason": "Claude: sizes are Tailwind arbitrary values the scanner does not read; h1 60px, h2 40px, body 16px (1.5x and 2.5x steps); step titles at 17px semibold are bold-led by design (DESIGN.md)"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "site/index.html"
+        ],
+        "createdAt": "2026-11-18T17:26:35.318Z",
+        "reason": "Claude: section cards have px-5 py-14 (sm:px-12 sm:py-20) Tailwind padding the static scan does not read; rendered screenshots show 20-80px inset"
+      }
+    ]
+  }
+}

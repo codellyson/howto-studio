@@ -255,3 +255,7 @@ The sheet that combines everything above.
 Changes needed outside the design: Settings currently uses `window.prompt` and `window.confirm`, and both must become the confirm dialog and an inline field.
 
 Rejected: nothing on the sheet was turned down.
+
+## Landing page (site/)
+
+The landing page does not follow this file. On 2026-11-18 the user asked for it to follow the layout of the Moonjar home page: a warm off-white page, centred sections in dashed rounded cards, Inter Tight headings with tight tracking, pill buttons and chips, and a green squiggle under one key phrase. It shares only the app icon and real screenshots with the app.
