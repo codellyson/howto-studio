@@ -1,0 +1,41 @@
+/* What dress.cjs draws over the clean take: captions, cursor, click ripple, and marks pinned to clicked elements.
+   How-to Studio uses the same file for its preview, so the preview matches the video. */
+.g-layer { position: relative; overflow: hidden; --g-color: #1E97F1; }
+.g-layer * { box-sizing: border-box; }
+
+.g-cap { position: absolute; left: 50%; transform: translateX(-50%); width: max-content; max-width: 80%; padding: 12px 22px; text-align: center; line-height: 1.35; color: #fff; background: rgba(17, 17, 17, 0.9); }
+.g-cap.font-serif { font-family: Georgia, serif; font-weight: 400; }
+.g-cap.font-sans { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-weight: 500; }
+.g-cap.font-rounded { font-family: "Arial Rounded MT Bold", "SF Pro Rounded", sans-serif; font-weight: 400; }
+.g-cap.size-s { font-size: 18px; }
+.g-cap.size-m { font-size: 22px; }
+.g-cap.size-l { font-size: 28px; }
+.g-cap.box-light { background: rgba(255, 255, 255, 0.95); color: #111; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15); }
+.g-cap.box-none { background: none; text-shadow: 0 0 3px #000, 0 0 6px #000, 0 1px 2px #000; }
+.g-cap.place-bottom { bottom: 28px; }
+.g-cap.place-top { top: 28px; }
+
+.g-ring { position: absolute; border: 3px solid var(--g-color); box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.9); }
+.g-label { position: absolute; transform: translate(-50%, -100%); padding: 6px 10px; background: var(--g-color); color: #fff; font: 600 16px/1.2 "Helvetica Neue", Helvetica, Arial, sans-serif; white-space: nowrap; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9); }
+.g-label::after { content: ""; position: absolute; left: 50%; bottom: -7px; margin-left: -7px; border: 7px solid transparent; border-bottom: 0; border-top-color: var(--g-color); }
+.g-arrow { position: absolute; transform: translate(-50%, -100%); width: 30px; height: 40px; }
+.g-arrow svg { display: block; width: 100%; height: 100%; overflow: visible; }
+
+/* The cursor box is 48px with the click point at its centre; dress.cjs moves the box. */
+.g-cursor-box { position: absolute; width: 48px; height: 48px; }
+.g-cursor { position: absolute; left: 24px; top: 24px; }
+.g-cursor.shape-ring { width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; border: 2px solid var(--g-color); background: color-mix(in srgb, var(--g-color) 35%, transparent); }
+.g-cursor.shape-dot { width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--g-color); box-shadow: 0 0 0 2px #fff; }
+.g-cursor.shape-arrow { width: 20px; height: 26px; }
+.g-cursor.shape-arrow svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.g-ripple-box { position: absolute; width: 64px; height: 64px; }
+.g-ripple { position: absolute; left: 8px; top: 8px; width: 48px; height: 48px; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--g-color) 70%, transparent); }
+
+/* The frame around the capture. Positions come from overlay.cjs frameBox(). */
+.g-bg { position: absolute; inset: 0; }
+.g-window { position: absolute; overflow: hidden; background: #fff; }
+.g-window.g-shadow { box-shadow: 0 24px 64px rgba(0, 0, 0, 0.32), 0 4px 14px rgba(0, 0, 0, 0.12); }
+.g-capture { position: absolute; overflow: hidden; }
+.g-bar { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 8px; padding: 0 14px; background: #ECECEE; border-bottom: 1px solid #DADADD; }
+.g-bar i { display: block; width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.g-address { margin-left: 16px; flex: 0 1 55%; height: 24px; display: flex; align-items: center; padding: 0 10px; border-radius: 6px; background: #fff; color: #555; font: 400 13px "Helvetica Neue", Helvetica, Arial, sans-serif; white-space: nowrap; overflow: hidden; }
