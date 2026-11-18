@@ -33,6 +33,10 @@ onMounted(() => {
   window.addEventListener('resize', place)
 })
 onBeforeUnmount(() => window.removeEventListener('resize', place))
+// Content under the selected line (its marks) can change its height.
+let ro: ResizeObserver | undefined
+onMounted(() => { ro = new ResizeObserver(place); if (list.value) ro.observe(list.value) })
+onBeforeUnmount(() => ro?.disconnect())
 
 function click(id: string) {
   if (props.editable && id === props.selected && !editing.value) {
@@ -83,6 +87,7 @@ const num = (id: string) => id.replace(/^L/, '')
         <span v-if="done !== undefined && i < done" class="meta mt-0.5 flex-none font-sans" aria-label="Filmed">✓</span>
         <span v-if="oneWay?.includes(l.id)" class="mt-2 size-1.5 flex-none rounded-full bg-oneway" title="Can't be undone. Answered in the browser while filming." />
       </button>
+      <slot v-if="l.id === selected && editing !== l.id" name="selected" :id="l.id" />
     </li>
   </ol>
 </template>

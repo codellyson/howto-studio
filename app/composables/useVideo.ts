@@ -1,4 +1,16 @@
 export type Line = { id: string, screen: string, voice: string }
+export type Overlay = {
+  restyle: boolean
+  look: { caption: Record<string, string>, cursor: Record<string, string>, frame: Record<string, string> }
+  scope: 'app' | 'video'
+  choices: Record<string, Record<string, string[]>>
+  pins: { line: string, kind: 'ring' | 'label' | 'arrow', target: number, text: string }[]
+  css: string
+  size: [number, number] | null
+  backgrounds: Record<string, string>
+  lines: Record<string, { html: string, targets: string[] }>
+  stale?: boolean
+}
 export type Video = {
   app: { slug: string, name: string }
   guide: string
@@ -8,6 +20,7 @@ export type Video = {
   status: string
   notes: string
   job: { kind: string, state: string, steps: string[], error?: string } | null
+  overlay?: Overlay
 }
 
 // The video a page shows, refreshed while the agent works on it.

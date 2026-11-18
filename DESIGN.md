@@ -197,7 +197,8 @@ Rejected: 1 First person, 3 Terse log.
 
 **Plain frame.** The frame as filmed, with a `1px solid #111111` outline, square, no shadow and no browser chrome. The subtitle (section 7) sits on it.
 
-- Frames are cropped above the burned-in caption the video carries (the bottom 150px of a 1440×900 frame), so the subtitle is never doubled.
+- Videos filmed since 2026-11-18 have a clean take: the editor shows the whole 1440×900 frame and draws the video's own look over it (see "Look tab" in section 11), so the preview is the video.
+- Older videos: frames are cropped above the burned-in caption (the bottom 150px of a 1440×900 frame), so the subtitle is never doubled.
 - Under the frame, centred: `SHOT 08 · 2.4 s`, plus `· can't be undone` in amber when it applies. Inter 12px, muted.
 - Library cards show the last line's frame with the same outline. Home shows the first video's.
 - Not filmed yet: an empty frame of the same size, with diagonal stripes (`#FFFFFF` and `#F4F4F5`, 8px bands), "Not filmed yet" and the line's "On screen" text centred in muted. The subtitle still shows.
@@ -235,6 +236,16 @@ The sheet that combines everything above.
   - The box: a 1px black outline, 16px padding, a 15px/600 title asked as a question, and one muted sentence on what happens.
   - Buttons: plain Cancel, then a primary button that repeats the action ("Record again", never "OK").
   - It sits on a backdrop of white at 85%.
+- **Look tab.** Beside Script, at the top of the script column; Inter 500 tabs, the active one underlined 2px black.
+  - Rows 40px tall: a muted label on the left, a segmented control on the right (1px black outline, 30px options, the chosen one filled black).
+  - Sections in order: Capture (frame Full / Framed / Browser, then padding, corners, shadow and background only when framed; zoom on click), Captions, Cursor.
+  - Colour: six 22px square swatches; the chosen one has a 2px black outline offset 2px. The colour is used for the cursor and for marks.
+  - "Use for": every video of the app, or this one. A pick saves at once and the stage preview follows; "Make the video again" redraws the video in seconds with no new filming.
+  - The video's look itself (captions, cursor, marks) belongs to the app being filmed, not to the studio: it is not bound by this file's colour rules.
+  - The stage preview is built on the server by the skill's own overlay.cjs, so frame, zoom, marks, cursor and caption match the video at that still's moment.
+- **Marks on the screen.** Under the selected script line: "On screen in this line", one 36px outlined row per mark (icon, kind, what it is pinned to, remove), then plain-outlined + Ring, + Label, + Arrow buttons.
+  - Marks pin to an element the line clicks. A line that clicks nothing says so instead of offering buttons.
+  - When the look or marks changed after the video was made, a muted bar under the top bar says so, with a "Make the video again" button.
 - **Menu.**
   - A 1px black outline, 4px padding, 28px items 2px apart, and a 15px icon first.
   - Hover is `#F2F2F3`.

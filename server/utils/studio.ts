@@ -1,6 +1,7 @@
 import { spawn, execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
+import { createRequire } from 'node:module'
 import { basename, join, resolve } from 'node:path'
 
 // Everything lives in one folder: one howto-video skill project per app (apps/<slug>), sign-in profiles beside it.
@@ -13,7 +14,7 @@ export type Save = { method: string, route: string, what: string, oneWay: boolea
 export type Summary = { framework: string, clientRendered: boolean, signIn: string, signedInUrl: string, pages: string[], saves: Save[] }
 export type AppConfig = { slug: string, name: string, repo: string, site: string, voice: string, fakeSaves: boolean, summary?: Summary, signedIn?: boolean }
 export type Line = { id: string, screen: string, voice: string }
-export type Job = { kind: 'connect' | 'script' | 'change' | 'record' | 'signin', state: 'working' | 'done' | 'error', steps: string[], error?: string, started: number, pid?: number, detached?: boolean }
+export type Job = { kind: 'connect' | 'script' | 'change' | 'record' | 'signin' | 'render', state: 'working' | 'done' | 'error', steps: string[], error?: string, started: number, pid?: number, detached?: boolean }
 
 export const appDir = (slug: string) => join(HOME, 'apps', slug)
 export const profileDir = (slug: string) => join(HOME, 'profiles', slug)
@@ -94,7 +95,7 @@ export const videoFile = (slug: string, guide: string) => join(appDir(slug), 'fi
 
 export function videoStatus(slug: string, guide: string) {
   const job = jobs.get(key(slug, guide))
-  if (job?.state === 'working') return job.kind === 'record' ? 'recording' : 'writing'
+  if (job?.state === 'working') return job.kind === 'record' ? 'recording' : job.kind === 'render' ? 'rendering' : 'writing'
   const script = scriptFile(slug, guide)
   if (!existsSync(script)) return job?.state === 'error' ? 'failed' : 'writing'
   const v = videoFile(slug, guide)
@@ -111,19 +112,93 @@ export function listVideos(slug: string) {
   }).sort((a, b) => a.title.localeCompare(b.title))
 }
 
-// One still per line, from the finished video, taken late in the line so the click has happened.
+// ---- Look and pinned marks: drawn over the clean take by the skill's dress.cjs ----
+
+// The skill's own overlay module, so the preview here is built by the same code that draws the video.
+export const overlay = createRequire(import.meta.url)(join(SKILL, 'scripts', 'overlay.cjs'))
+const cleanFile = (slug: string, guide: string) => join(appDir(slug), 'out', `${guide}.silent.mp4`)
+const planFile = (slug: string, guide: string) => join(appDir(slug), 'out', `${guide}.overlay.json`)
+export type Plan = { size: [number, number], duration: number, lines: { id: string, t: number, len: number }[], cursor: { t: number, k: string, x: number, y: number }[], targets: { line: string, t: number, name: string, box: { x: number, y: number, w: number, h: number } }[] }
+
+// Videos filmed before looks could change have no clean take, so they can't be re-styled.
+export function readPlan(slug: string, guide: string): Plan | null {
+  const f = planFile(slug, guide)
+  return existsSync(f) && existsSync(cleanFile(slug, guide)) ? JSON.parse(readFileSync(f, 'utf8')) : null
+}
+
+const frameAt = (line: { t: number, len: number }, duration: number) => Math.min(line.t + line.len * 0.75, duration - 0.1)
+
+export function overlayView(slug: string, guide: string) {
+  const plan = readPlan(slug, guide)
+  const project = appDir(slug)
+  const { look, scope } = overlay.readLook(project, guide)
+  const pins = overlay.readPins(project, guide)
+  if (!plan) return { restyle: false, look, scope, choices: overlay.CHOICES, backgrounds: overlay.BACKGROUNDS, pins, css: '', size: null, lines: {} }
+  const captions = Object.fromEntries(readScript(slug, guide).lines.map(l => [l.id, l.voice]))
+  const zooms = overlay.zoomWindows(look, plan.lines, plan.targets)
+  const address = (plan as any).address || readApp(slug).site
+  const lines: Record<string, { html: string, targets: string[] }> = {}
+  for (const l of plan.lines) {
+    const targets = plan.targets.filter(t => t.line === l.id)
+    const at = frameAt(l, plan.duration)
+    const last = plan.cursor.filter(c => c.t <= at).at(-1)
+    lines[l.id] = {
+      // The same frame, marks, cursor, zoom and caption the video gets at this still's moment.
+      html: overlay.previewHtml({
+        look, size: plan.size, address, caption: captions[l.id], targets,
+        src: `/api/apps/${slug}/videos/${guide}/frame/${l.id}.jpg?v=${plan.duration}`,
+        pins: pins.filter((p: any) => p.line === l.id),
+        cursor: last && last.k !== 'hide' ? { x: last.x, y: last.y } : null,
+        zoom: overlay.zoomAt(zooms, at, plan.size),
+      }),
+      targets: targets.map(t => t.name),
+    }
+  }
+  const files = overlay.lookFiles(project, guide)
+  const newest = Math.max(...[files.app, files.video, join(project, 'scripts', guide, 'pins.json')].filter(f => existsSync(f)).map(f => statSync(f).mtimeMs), 0)
+  const v = videoFile(slug, guide)
+  return {
+    restyle: true, look, scope, choices: overlay.CHOICES, backgrounds: overlay.BACKGROUNDS, pins, css: overlay.css(), size: plan.size, lines,
+    // The look or the marks changed after the video was last made.
+    stale: existsSync(v) && newest > statSync(v).mtimeMs,
+  }
+}
+
+// One still per line, taken late in the line so the click has happened. A clean take gives a still without
+// captions, for the preview to draw over; an older video gives its finished frame with the caption cropped off.
 export function frameFile(slug: string, guide: string, id: string) {
   const rec = readRecorded(slug, guide)
   const line = rec?.lines.find(l => l.id === id)
   if (!rec || !line) return null
   const dir = join(appDir(slug), 'out', 'frames', guide)
   const f = join(dir, `${id}.jpg`)
-  const v = videoFile(slug, guide)
+  const clean = readPlan(slug, guide) ? cleanFile(slug, guide) : null
+  const v = clean ?? videoFile(slug, guide)
   if (existsSync(f) && statSync(f).mtimeMs >= statSync(v).mtimeMs) return f
   mkdirSync(dir, { recursive: true })
-  const at = Math.min(line.t + line.len * 0.75, rec.duration - 0.1)
-  execFileSync('ffmpeg', ['-v', 'error', '-y', '-ss', String(at), '-i', v, '-frames:v', '1', '-vf', 'crop=iw:ih-150:0:0,scale=960:-1', '-q:v', '4', f])
+  execFileSync('ffmpeg', ['-v', 'error', '-y', '-ss', String(frameAt(line, rec.duration)), '-i', v, '-frames:v', '1', '-vf', clean ? 'scale=960:-1' : 'crop=iw:ih-150:0:0,scale=960:-1', '-q:v', '4', f])
   return f
+}
+
+// Draws the look and marks onto the clean take again. No agent: the skill's cut.py --redress.
+export function startRender(slug: string, guide: string) {
+  const k = key(slug, guide)
+  if (busy(k)) throw createError({ statusCode: 409, statusMessage: 'This is already running.' })
+  const job: Job = { kind: 'render', state: 'working', steps: ['Drawing the captions and cursor'], started: Date.now() }
+  jobs.set(k, job)
+  const child = spawn('python3', [join(SKILL, 'scripts', 'cut.py'), appDir(slug), guide, '--redress'], { cwd: appDir(slug) })
+  job.pid = child.pid
+  jobs.save(k, job)
+  let stderr = ''
+  child.stderr.on('data', (d) => { stderr = (stderr + d).slice(-2000) })
+  child.on('error', (e) => { job.state = 'error'; job.error = `Could not start python3: ${e.message}`; jobs.save(k, job) })
+  child.on('close', (code) => {
+    if (job.state === 'error') return
+    job.state = code === 0 ? 'done' : 'error'
+    if (code !== 0) job.error = `The video could not be made again. ${stderr.trim().split('\n').at(-1) ?? ''}`.trim()
+    jobs.save(k, job)
+  })
+  return job
 }
 
 // ---- Jobs: one claude -p run per app or video at a time ----
@@ -144,7 +219,7 @@ export const jobs = {
     // A job whose process outlived an earlier studio: it ends when its process does.
     if (job?.state === 'working' && job.detached && !alive(job.pid)) {
       const [slug, guide] = k.split('/') as [string, string]
-      const made = job.kind === 'record' ? !!readRecorded(slug, guide) : job.kind === 'script' ? readScript(slug, guide).lines.length > 0 : false
+      const made = job.kind === 'record' || job.kind === 'render' ? !!readRecorded(slug, guide) : job.kind === 'script' ? readScript(slug, guide).lines.length > 0 : false
       Object.assign(job, made ? { state: 'done' } : { state: 'error', error: 'The studio restarted while this was running. Try again.' })
       jobs.save(k, job)
     }

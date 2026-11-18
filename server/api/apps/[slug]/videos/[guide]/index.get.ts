@@ -15,6 +15,7 @@ export default defineEventHandler((event) => {
     status: videoStatus(app.slug, guide),
     notes: existsSync(notesFile) ? readFileSync(notesFile, 'utf8') : '',
     oneWay: (app.summary?.saves ?? []).filter(s => s.oneWay),
+    overlay: overlayView(app.slug, guide),
     job: jobs.get(key(app.slug, guide)) ?? null,
   }
 })
