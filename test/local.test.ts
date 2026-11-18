@@ -30,3 +30,18 @@ test('a stopped app is started for a job and stopped after it', async () => {
   await new Promise(r => setTimeout(r, 800))
   await assert.rejects(fetch(app.site, { signal: AbortSignal.timeout(1000) }))
 })
+
+test('a monorepo app uses the lockfile above it', () => {
+  const root = mkdtempSync(join(tmpdir(), 'mono-'))
+  mkdirSync(join(root, 'apps', 'web'), { recursive: true })
+  writeFileSync(join(root, 'pnpm-lock.yaml'), '')
+  writeFileSync(join(root, 'apps', 'web', 'package.json'), JSON.stringify({ scripts: { dev: 'nuxt dev' }, dependencies: { nuxt: '4' } }))
+  assert.equal(detectLocal(join(root, 'apps', 'web'))?.command, 'pnpm dev')
+})
+
+test('a server that fails to start says why', async () => {
+  const repo = mkdtempSync(join(tmpdir(), 'repo-'))
+  const app = { slug: 'local-fail', name: 'T', repo, site: 'http://localhost:47992', voice: 'Michael', fakeSaves: true, mode: 'local' as const, start: 'echo "ERROR Another dev server is already running" ; exit 1' }
+  mkdirSync(appDir(app.slug), { recursive: true })
+  await assert.rejects(ensureLocal(app, () => {}), /It said: "ERROR Another dev server is already running"/)
+})

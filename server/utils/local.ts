@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { existsSync, openSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { appDir, type AppConfig } from './studio.ts'
 
 // Filming an app on this Mac: the studio starts its dev server for a job and stops it after,
@@ -17,11 +17,30 @@ export function detectLocal(repo: string): { command: string, url: string } | nu
   const name = pkg.scripts?.dev ? 'dev' : pkg.scripts?.start ? 'start' : null
   if (!name) return null
   const script = String(pkg.scripts[name])
-  const pm = existsSync(join(repo, 'pnpm-lock.yaml')) ? 'pnpm' : existsSync(join(repo, 'yarn.lock')) ? 'yarn' : existsSync(join(repo, 'bun.lockb')) || existsSync(join(repo, 'bun.lock')) ? 'bun' : 'npm'
+  const pm = packageManager(repo)
   const command = pm === 'npm' ? `npm run ${name}` : `${pm} ${name}`
   const deps = { ...pkg.dependencies, ...pkg.devDependencies }
   const port = Number(script.match(/(?:--port|-p)[ =](\d{2,5})/)?.[1] ?? script.match(/PORT=(\d{2,5})/)?.[1]) || DEFAULT_PORTS.find(([d]) => deps[d])?.[1] || 3000
   return { command, url: `http://localhost:${port}` }
+}
+
+// In a monorepo the lockfile sits above the app's folder, so look upwards for it.
+function packageManager(repo: string) {
+  for (let dir = repo; dir !== dirname(dir); dir = dirname(dir)) {
+    if (existsSync(join(dir, 'pnpm-lock.yaml'))) return 'pnpm'
+    if (existsSync(join(dir, 'yarn.lock'))) return 'yarn'
+    if (existsSync(join(dir, 'bun.lockb')) || existsSync(join(dir, 'bun.lock'))) return 'bun'
+    if (existsSync(join(dir, 'package-lock.json')) || existsSync(join(dir, '.git'))) break
+  }
+  return 'npm'
+}
+
+// The line of the server's output that says why it stopped, without stack frames or blank lines.
+function reason(logFile: string) {
+  try {
+    const lines = readFileSync(logFile, 'utf8').split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('at ') && !/ELIFECYCLE|^>/.test(l))
+    return lines.find(l => /error|already|EADDRINUSE|not found|cannot/i.test(l) && l.length > 12) ?? lines.at(-1) ?? ''
+  } catch { return '' }
 }
 
 export const isLocalUrl = (url: string) => { try { return ['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname) } catch { return false } }
@@ -40,7 +59,8 @@ export async function ensureLocal(app: AppConfig, say: (step: string) => void) {
   if (await answers(app.site)) { running.set(app.slug, { users: 1 }); return }
   if (!app.start) throw new Error(`Nothing answers at ${app.site}, and there is no command to start the app`)
   say(`Starting the app: ${app.start}`)
-  const log = openSync(join(appDir(app.slug), 'local.log'), 'w')
+  const logFile = join(appDir(app.slug), 'local.log')
+  const log = openSync(logFile, 'w')
   // A login shell, so the person's PATH (node, pnpm) applies, as it does in their terminal.
   const child = spawn(process.env.SHELL || '/bin/zsh', ['-lc', app.start], { cwd: app.repo, detached: true, stdio: ['ignore', log, log] })
   child.unref()
@@ -51,7 +71,8 @@ export async function ensureLocal(app: AppConfig, say: (step: string) => void) {
     if (await answers(app.site)) return
   }
   releaseLocal(app.slug, true)
-  throw new Error(`The app did not start at ${app.site}. Its output is in local.log in the app's studio folder`)
+  const why = reason(logFile).replace(/\.$/, '')
+  throw new Error(`The app did not start at ${app.site}${why ? `. It said: "${why.slice(0, 160)}"` : ''}. Its full output is in local.log in the app's studio folder`)
 }
 
 // After a job: stop the server only if the studio started it and no other job still needs it.
