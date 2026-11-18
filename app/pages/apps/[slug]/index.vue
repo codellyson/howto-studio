@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { PhCheck, PhCircleNotch, PhClock, PhGearSix, PhWarningCircle } from '@phosphor-icons/vue'
+
 type Video = { guide: string, title: string, status: string, duration: number | null, cover: string | null }
 type App = { slug: string, name: string, summary?: object, videos: Video[], job: { state: string } | null }
 
@@ -17,41 +19,50 @@ async function start() {
   } catch (e) { problem.value = errorText(e) } finally { sending.value = false }
 }
 
-const STATUS: Record<string, string> = { done: 'Up to date', changed: 'Script changed since filming', draft: 'Not filmed yet', writing: 'Writing the script…', recording: 'Filming…', failed: 'Could not write the script' }
+const LABEL: Record<string, string> = { done: 'Up to date', changed: 'Script changed', draft: 'Not filmed yet', writing: 'Writing the script', recording: 'Recording', failed: 'Could not write the script' }
 const link = (v: Video) => v.status === 'done' ? `/apps/${slug}/v/${v.guide}/review` : v.status === 'recording' ? `/apps/${slug}/v/${v.guide}/record` : `/apps/${slug}/v/${v.guide}`
-const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`
+const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 </script>
 
 <template>
   <div class="flex min-h-screen flex-col">
     <TopBar :crumbs="[{ label: 'Your apps', to: '/' }, { label: app?.name ?? '' }]">
-      <NuxtLink :to="`/settings?app=${slug}`" class="text-muted no-underline hover:text-fg">Settings</NuxtLink>
+      <NuxtLink :to="`/settings?app=${slug}`" aria-label="Settings" class="btn btn-plain btn-icon"><PhGearSix :size="20" /></NuxtLink>
     </TopBar>
 
-    <main class="mx-auto flex w-full max-w-[1240px] flex-1 flex-col gap-[30px] px-10 pt-9 pb-10 max-sm:px-4">
-      <p v-if="error" class="m-0 text-rec">{{ error }}</p>
-      <section v-if="app" class="flex flex-col items-center gap-3.5 pt-2 pb-1">
-        <h1 class="m-0 text-center text-[30px] font-semibold tracking-[-0.02em]">What should {{ app.name }} users learn next?</h1>
-        <p v-if="app.job?.state === 'working'" class="m-0 text-muted">Still reading the code. <NuxtLink :to="`/connect?app=${slug}`" class="text-fg">Watch</NuxtLink></p>
-        <form class="flex w-full max-w-[720px] items-center gap-2 rounded-[14px] bg-[#17171B] py-1.5 pr-1.5 pl-4 shadow-[0_0_0_1px_#2A2A30,0_20px_40px_-12px_rgba(0,0,0,.6)]" @submit.prevent="start">
+    <main class="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-8 px-8 pt-10 pb-12 max-sm:px-4">
+      <p v-if="error" class="m-0 text-rec" role="alert">{{ error }}</p>
+      <section v-if="app" class="flex flex-col items-center gap-3">
+        <h1 class="m-0 text-center font-serif text-[30px] leading-[1.15] font-medium tracking-[-0.01em]">What should {{ app.name }} users learn next?</h1>
+        <p v-if="app.job?.state === 'working'" class="m-0 text-muted">The code is still being read. <NuxtLink :to="`/connect?app=${slug}`">Watch</NuxtLink></p>
+        <form class="flex w-full max-w-[720px] gap-2" @submit.prevent="start">
           <label for="task" class="sr-only">Describe the next video</label>
-          <input id="task" v-model="task" required minlength="4" maxlength="500" placeholder="e.g. How a photographer shares an album for review" class="h-10 min-w-0 flex-1 border-0 bg-transparent text-[14.5px] text-fg outline-none placeholder:text-dim">
-          <button :disabled="sending || app.job?.state === 'working'" class="h-10 rounded-[10px] border-0 bg-fg px-4 font-semibold text-ink disabled:opacity-50">{{ sending ? 'Starting…' : 'Write script' }}</button>
+          <input id="task" v-model="task" required minlength="4" maxlength="500" placeholder="e.g. How a photographer shares an album for review" class="field min-w-0 flex-1">
+          <button :disabled="sending || app.job?.state === 'working'" class="btn btn-primary">{{ sending ? 'Starting' : 'Write script' }}</button>
         </form>
-        <p v-if="problem" class="m-0 text-rec">{{ problem }}</p>
+        <p v-if="problem" class="m-0 text-rec" role="alert">{{ problem }}</p>
       </section>
 
-      <section v-if="app?.videos.length" class="grid grid-cols-3 gap-[22px] max-lg:grid-cols-2 max-sm:grid-cols-1">
-        <NuxtLink v-for="v in app.videos" :key="v.guide" :to="link(v)" class="flex flex-col gap-3 no-underline">
-          <span v-if="v.cover" class="relative block rounded-[14px] bg-gradient-to-b from-[#2A2A2F] to-[#1C1C20] p-[22px] shadow-[inset_0_1px_0_rgba(255,255,255,.06),0_24px_48px_-18px_rgba(0,0,0,.8)]">
-            <img :src="`/api/apps/${slug}/videos/${v.guide}/frame/${v.cover}.jpg`" alt="" class="block aspect-[16/10] w-full rounded-lg object-cover shadow-[0_14px_30px_rgba(0,0,0,.45)]">
-            <span v-if="v.duration" class="absolute right-[30px] bottom-[30px] rounded-[5px] bg-black/75 px-[7px] py-0.5 text-[11.5px] font-semibold text-fg">{{ mmss(v.duration) }}</span>
+      <div v-if="app && !app.videos.length" class="mx-auto flex w-full max-w-[720px] flex-col items-start gap-2 border border-ink px-[18px] py-[22px]">
+        <p class="m-0 font-serif text-[18px]">No videos yet.</p>
+        <span class="text-[13px] text-muted">Describe one task above and a script is written from the code.</span>
+      </div>
+
+      <section v-else-if="app" class="grid grid-cols-3 gap-6 max-lg:grid-cols-2 max-sm:grid-cols-1">
+        <NuxtLink v-for="(v, i) in app.videos" :key="v.guide" :to="link(v)" class="land flex flex-col gap-2.5 no-underline" :style="{ animationDelay: `${i * 60}ms` }">
+          <img v-if="v.cover" :src="`/api/apps/${slug}/videos/${v.guide}/frame/${v.cover}.jpg`" alt="" class="frame block aspect-[1440/750] w-full object-cover">
+          <span v-else class="frame unfilmed grid aspect-[1440/750] place-items-center text-muted">{{ LABEL[v.status] }}</span>
+          <span class="flex items-center gap-2">
+            <span class="min-w-0 flex-1 truncate font-medium">{{ v.title }}</span>
+            <span class="meta inline-flex flex-none items-center gap-1.5 whitespace-nowrap" :class="{ 'text-rec': v.status === 'failed' }" :aria-label="LABEL[v.status]">
+              <PhCheck v-if="v.status === 'done'" :size="15" />
+              <PhClock v-else-if="v.status === 'changed'" :size="15" />
+              <PhCircleNotch v-else-if="v.status === 'writing'" :size="15" class="spin" />
+              <span v-else-if="v.status === 'recording'" class="rec-dot pulse" />
+              <PhWarningCircle v-else-if="v.status === 'failed'" :size="15" />
+              {{ v.status === 'done' && v.duration ? mmss(v.duration) : LABEL[v.status] }}
+            </span>
           </span>
-          <span v-else class="block rounded-[14px] bg-[#141418] p-[22px] shadow-[inset_0_0_0_1.5px_#2A2A30]">
-            <span class="grid aspect-[16/10] place-items-center rounded-lg bg-[repeating-linear-gradient(135deg,#17171C_0_10px,#1B1B21_10px_20px)] text-muted shadow-[inset_0_0_0_1px_#26262D]">{{ STATUS[v.status] }}</span>
-          </span>
-          <span class="text-[14.5px] font-semibold text-fg">{{ v.title }}</span>
-          <span class="-mt-1.5 text-[12.5px]" :class="v.status === 'failed' ? 'text-rec' : 'text-muted'">{{ STATUS[v.status] }}</span>
         </NuxtLink>
       </section>
     </main>

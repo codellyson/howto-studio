@@ -38,7 +38,7 @@ ${writes}`
   return runClaude(key(app.slug), 'connect', prompt, {
     cwd: app.repo, schema: SUMMARY_SCHEMA, readOnly: true,
     onDone: (out) => {
-      if (!out || !Array.isArray(out.saves)) throw new Error('The agent did not return a summary of the code')
+      if (!out || !Array.isArray(out.saves)) throw new Error('The code could not be summarised')
       const { name, ...summary } = out
       writeApp({ ...readApp(app.slug), ...(typeof name === 'string' && name.trim() ? { name: name.trim().slice(0, 60) } : {}), summary })
     },
@@ -60,7 +60,8 @@ const shared = (app: AppConfig, guide: string) => `You make how-to videos with t
 - Site to film: ${app.site}
 - GUIDE_PROFILE is already set in your environment to ${profileDir(app.slug)}, so run the skill's scripts without prefixing it. Keep that folder: it holds the saved sign-in; never delete it.
 - Video: ${guide}
-- Nobody can answer questions during this run. Decide sensibly, and write anything the person should know to scripts/${guide}/notes.md.`
+- Nobody can answer questions during this run. Decide sensibly, and write anything the person should know to scripts/${guide}/notes.md.
+- Your final message is shown to the person. Make it one or two plain sentences about the video, with no "I" or "we": if the work could not finish, say where it stopped and why (for example "Filming stopped at line 6. The Approve album button never appeared."). No praise, no exclamation marks.`
 
 export function startScript(app: AppConfig, guide: string, task: string) {
   const prompt = `${shared(app, guide)}
@@ -74,7 +75,7 @@ Do these parts only:
 Do not make the voice and do not record. The person approves the script in the studio.`
   return runClaude(key(app.slug, guide), 'script', prompt, {
     cwd: appDir(app.slug), env: { GUIDE_PROFILE: profileDir(app.slug) },
-    onDone: () => { if (!readScript(app.slug, guide).lines.length) throw new Error('The agent finished without writing a script') },
+    onDone: () => { if (!readScript(app.slug, guide).lines.length) throw new Error('No script was written') },
   })
 }
 
@@ -100,6 +101,6 @@ Film this video now, following sections 2 to 5 for ${guide}:
 Then review the frame sheet as section 6 says, and add what you found to scripts/${guide}/notes.md.`
   return runClaude(key(app.slug, guide), 'record', prompt, {
     cwd: appDir(app.slug), env: { GUIDE_PROFILE: profileDir(app.slug) },
-    onDone: () => { if (!readRecorded(app.slug, guide)) throw new Error('The agent finished without a finished video') },
+    onDone: () => { if (!readRecorded(app.slug, guide)) throw new Error('No finished video was made') },
   })
 }

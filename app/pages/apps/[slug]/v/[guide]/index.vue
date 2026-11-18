@@ -1,50 +1,42 @@
 <script setup lang="ts">
+import { PhChatCircle, PhCircleNotch, PhPlay } from '@phosphor-icons/vue'
+
 const { slug, guide, base, data: video, error, load, frame, lengths, oneWayLines } = useVideo()
 const selected = ref('')
-const editing = ref(false)
-const draft = ref('')
 const ask = ref('')
 const problem = ref('')
 const showNotes = ref(false)
+const confirmRecord = ref(false)
 
 watch(video, (v) => { if (v?.lines.length && !v.lines.some(l => l.id === selected.value)) selected.value = v.lines[0]!.id })
 const line = computed(() => video.value?.lines.find(l => l.id === selected.value))
-const index = computed(() => video.value?.lines.findIndex(l => l.id === selected.value) ?? -1)
 const working = computed(() => video.value?.job?.state === 'working')
-const steps = computed(() => video.value?.job?.steps.slice(-5) ?? [])
+const steps = computed(() => video.value?.job?.steps.slice(-6) ?? [])
 
 function move(by: number) {
   const lines = video.value?.lines ?? []
-  const next = lines[index.value + by]
+  const next = lines[lines.findIndex(l => l.id === selected.value) + by]
   if (next) selected.value = next.id
 }
 function onKey(e: KeyboardEvent) {
-  if (editing.value || (e.target as HTMLElement).closest('input, textarea, select')) return
-  if (e.key === 'ArrowRight') move(1)
-  if (e.key === 'ArrowLeft') move(-1)
+  if ((e.target as HTMLElement).closest('input, textarea, select, dialog')) return
+  if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { e.preventDefault(); move(1) }
+  if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { e.preventDefault(); move(-1) }
 }
 onMounted(() => window.addEventListener('keydown', onKey))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
-function edit() {
-  if (working.value || !line.value) return
-  draft.value = line.value.voice
-  editing.value = true
-  nextTick(() => (document.getElementById('line-text') as HTMLTextAreaElement | null)?.focus())
-}
-async function saveLine() {
-  if (!editing.value || !line.value) return
-  editing.value = false
-  if (draft.value.trim() === line.value.voice) return
+async function saveLine(id: string, voice: string) {
   problem.value = ''
   try {
-    const r = await $fetch<{ lines: Line[] }>(`${base}/lines/${line.value.id}`, { method: 'PATCH', body: { voice: draft.value } })
+    const r = await $fetch<{ lines: Line[] }>(`${base}/lines/${id}`, { method: 'PATCH', body: { voice } })
     if (video.value) video.value.lines = r.lines
     load()
   } catch (e) { problem.value = errorText(e) }
 }
 
 async function sendAsk() {
+  if (!ask.value.trim()) return
   problem.value = ''
   try {
     await $fetch(`${base}/ask`, { method: 'POST', body: { request: ask.value } })
@@ -54,6 +46,7 @@ async function sendAsk() {
 }
 
 async function record() {
+  confirmRecord.value = false
   problem.value = ''
   try {
     await $fetch(`${base}/record`, { method: 'POST' })
@@ -61,60 +54,57 @@ async function record() {
   } catch (e) { problem.value = errorText(e) }
 }
 
-const len = computed(() => line.value && lengths.value[line.value.id] ? `${lengths.value[line.value.id]!.toFixed(1)} s` : '')
+const shotMeta = computed(() => {
+  if (!line.value) return ''
+  const len = lengths.value[line.value.id]
+  return `SHOT ${line.value.id.replace(/^L/, '')}${len ? ` · ${len.toFixed(1)} s` : ''}`
+})
 </script>
 
 <template>
   <div class="flex h-screen min-h-[640px] flex-col overflow-hidden">
     <TopBar :crumbs="[{ label: video?.app.name ?? '', to: `/apps/${slug}` }, { label: video?.title ?? '' }]">
-      <form v-if="video?.lines.length" class="max-md:hidden" @submit.prevent="sendAsk">
+      <form v-if="video?.lines.length" class="relative max-lg:hidden" @submit.prevent="sendAsk">
         <label for="ask" class="sr-only">Ask for a change</label>
-        <input id="ask" v-model="ask" :disabled="working" placeholder="Ask for a change…" class="h-8 w-[280px] rounded-lg border border-[#26262C] bg-field px-3 text-fg placeholder:text-dim disabled:opacity-50">
+        <PhChatCircle :size="16" class="pointer-events-none absolute top-2 left-3 text-muted" />
+        <input id="ask" v-model="ask" :disabled="working" placeholder="Ask for a change…" class="field w-[280px] pl-9 disabled:opacity-40">
       </form>
-      <button v-if="video?.notes" class="h-8 rounded-lg border-0 bg-transparent px-2.5 text-muted hover:text-fg" :aria-expanded="showNotes" @click="showNotes = !showNotes">Notes</button>
-      <NuxtLink v-if="video?.recorded" :to="`/apps/${slug}/v/${guide}/review`" class="inline-flex h-8 items-center rounded-lg border border-edge px-3.5 font-medium text-fg no-underline">Watch</NuxtLink>
-      <button :disabled="working || !video?.lines.length" class="inline-flex h-8 items-center gap-2 rounded-lg border-0 bg-fg px-3.5 font-semibold text-ink disabled:opacity-50" @click="record">
-        <span class="size-2 rounded-full bg-rec" />{{ video?.recorded ? 'Record again' : 'Record' }}
+      <button v-if="video?.notes" type="button" class="btn btn-plain" :aria-expanded="showNotes" @click="showNotes = !showNotes">Notes</button>
+      <NuxtLink v-if="video?.recorded" :to="`/apps/${slug}/v/${guide}/review`" class="btn btn-secondary"><PhPlay :size="16" />Watch</NuxtLink>
+      <button type="button" class="btn btn-primary" :disabled="working || !video?.lines.length" @click="video?.recorded ? (confirmRecord = true) : record()">
+        <span class="rec-dot" />{{ video?.recorded ? 'Record again' : 'Record' }}
       </button>
     </TopBar>
 
-    <main class="flex min-h-0 flex-1 flex-col items-center justify-center gap-[22px] px-10 pt-1 max-sm:px-4">
-      <p v-if="error" class="m-0 text-rec">{{ error }}</p>
+    <p v-if="error || problem || video?.job?.state === 'error'" class="m-0 border-b border-line px-4 py-2 text-rec" role="alert">{{ problem || error || video?.job?.error }}</p>
+    <p v-else-if="video?.status === 'changed'" class="m-0 border-b border-line px-4 py-2 text-muted">The script changed after filming. Record again to update the video.</p>
 
-      <template v-if="video && !video.lines.length">
-        <div class="flex max-w-[560px] flex-col items-center gap-2 text-center" aria-live="polite">
-          <p class="m-0 text-[22px] font-medium">{{ working ? 'Writing the script…' : 'No script yet' }}</p>
-          <p v-for="(s, i) in steps" :key="i" class="m-0" :class="i === steps.length - 1 ? 'text-muted' : 'text-dim'">{{ s }}</p>
-          <p v-if="video.job?.state === 'error'" class="m-0 text-rec">{{ video.job.error }}</p>
+    <div class="flex min-h-0 flex-1">
+      <section class="w-[42%] min-w-[380px] max-w-[520px] flex-none overflow-y-auto border-r border-line" aria-label="Script">
+        <div v-if="video && !video.lines.length" class="flex flex-col gap-2 p-4" aria-live="polite">
+          <p class="m-0 flex items-center gap-2 font-medium"><PhCircleNotch v-if="working" :size="16" class="spin" />{{ working ? 'Writing the script' : 'No script yet' }}</p>
+          <p v-for="(s, i) in steps" :key="i" class="m-0" :class="i === steps.length - 1 ? 'text-ink' : 'text-muted'">{{ s }}</p>
         </div>
-      </template>
+        <template v-else-if="video">
+          <p v-if="working" class="m-0 flex items-center gap-2 px-4 pt-4 text-muted" aria-live="polite"><PhCircleNotch :size="15" class="spin" />{{ steps.at(-1) ?? 'Working' }}</p>
+          <ScriptLines :lines="video.lines" :selected="selected" :one-way="oneWayLines" :editable="!working" @select="selected = $event" @save="saveLine" />
+        </template>
+      </section>
 
-      <template v-else-if="line">
-        <div class="w-full max-w-[860px] overflow-hidden rounded-[10px] shadow-[0_0_0_1px_rgba(255,255,255,.06),0_30px_60px_-10px_rgba(0,0,0,.7)]">
-          <img v-if="frame(line.id)" :src="frame(line.id)!" :alt="`Line ${line.id}`" class="block aspect-[1440/750] w-full object-cover">
-          <div v-else class="grid aspect-[1440/750] w-full place-items-center bg-[#141418] px-10 text-center text-muted">
-            <span class="flex max-w-[520px] flex-col gap-2"><span class="text-dim">Not filmed yet</span>{{ line.screen }}</span>
-          </div>
+      <main class="flex min-w-0 flex-1 flex-col items-center justify-center gap-3 overflow-y-auto p-6">
+        <div class="flex w-full max-w-[860px] flex-col gap-3">
+          <StageFrame :src="line ? frame(line.id) : null" :subtitle="line?.voice" :on-screen="line?.screen" :alt="line ? `Shot ${line.id.replace(/^L/, '')}` : ''" />
+          <p v-if="line" class="meta m-0 text-center">{{ shotMeta }}<template v-if="oneWayLines.includes(line.id)"> · <span class="text-oneway">can't be undone</span></template></p>
+          <FrameStrip v-if="video?.lines.length" :lines="video.lines" :src="frame" :lengths="lengths" :selected="selected" :one-way="oneWayLines" @pick="selected = $event" />
         </div>
+      </main>
+    </div>
 
-        <textarea
-          v-if="editing" id="line-text" v-model="draft" rows="2" maxlength="400"
-          class="w-full max-w-[760px] resize-none rounded-lg border border-edge bg-field px-3 py-2 text-center text-[24px] leading-[1.35] font-medium tracking-[-0.01em] text-fg"
-          @blur="saveLine" @keydown.enter.prevent="saveLine" @keydown.esc="editing = false"
-        />
-        <button v-else class="max-w-[760px] cursor-text border-0 bg-transparent p-0 text-center text-[24px] leading-[1.35] font-medium tracking-[-0.01em] text-fg disabled:cursor-default" :disabled="working" @click="edit">{{ line.voice }}</button>
+    <aside v-if="showNotes && video?.notes" class="land fixed top-[60px] right-4 z-10 max-h-[70vh] w-[420px] overflow-auto border border-ink bg-page p-4 text-[13px] whitespace-pre-wrap" aria-label="Notes from reading the code">{{ video.notes }}</aside>
 
-        <p v-if="working" class="-mt-2.5 m-0 text-muted" aria-live="polite">{{ steps.at(-1) ?? 'Working…' }}</p>
-        <p v-else class="-mt-2.5 m-0 font-mono text-xs text-faint">
-          {{ line.id.replace('L', '') }}<template v-if="len"> · {{ len }}</template> · click the line to edit it<template v-if="oneWayLines.includes(line.id)"> · <span class="text-amber">can't be undone, answered in the browser</span></template>
-        </p>
-        <p v-if="problem || video?.job?.state === 'error'" class="m-0 text-rec">{{ problem || video?.job?.error }}</p>
-        <p v-if="video?.status === 'changed'" class="m-0 text-muted">The script changed since filming. Record again to update the video.</p>
-      </template>
-    </main>
-
-    <aside v-if="showNotes && video?.notes" class="absolute top-[60px] right-5 max-h-[60vh] w-[380px] overflow-auto rounded-xl bg-raise p-4 text-[13px] whitespace-pre-wrap text-soft shadow-[0_0_0_1px_#2A2A30,0_20px_40px_rgba(0,0,0,.6)]">{{ video.notes }}</aside>
-
-    <FrameStrip v-if="video?.lines.length" :lines="video.lines" :src="frame" :lengths="lengths" :selected="selected" :one-way="oneWayLines" mode="edit" @pick="selected = $event" />
+    <ConfirmDialog
+      :open="confirmRecord" title="Record this video again?" body="The current video is replaced when the new one is done."
+      action="Record again" @confirm="record" @cancel="confirmRecord = false"
+    />
   </div>
 </template>

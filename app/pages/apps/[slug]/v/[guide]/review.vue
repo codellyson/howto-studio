@@ -1,23 +1,27 @@
 <script setup lang="ts">
-const { slug, guide, base, data: video, error, frame, lengths } = useVideo()
+import { PhFolderOpen, PhHeadphones, PhPencilSimple } from '@phosphor-icons/vue'
+
+const { slug, guide, base, data: video, error, frame, lengths, oneWayLines } = useVideo()
 const player = ref<HTMLVideoElement>()
 const problem = ref('')
 const current = ref('')
 
-const lines = computed(() => video.value?.recorded?.lines ?? [])
+const recorded = computed(() => video.value?.recorded?.lines ?? [])
+const scriptLines = computed(() => (video.value?.lines ?? []).filter(l => recorded.value.some(r => r.id === l.id)))
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
-const times = computed(() => Object.fromEntries(lines.value.map(l => [l.id, mmss(l.t)])))
-const lastId = computed(() => lines.value.at(-1)?.id)
+const times = computed(() => Object.fromEntries(recorded.value.map(l => [l.id, mmss(l.t)])))
+const lastId = computed(() => recorded.value.at(-1)?.id)
 
 function jump(id: string) {
-  const l = lines.value.find(x => x.id === id)
+  const l = recorded.value.find(x => x.id === id)
   if (!l || !player.value) return
+  current.value = id
   player.value.currentTime = l.t
   player.value.play()
 }
 function onTime() {
   const t = player.value?.currentTime ?? 0
-  current.value = [...lines.value].reverse().find(l => l.t <= t + 0.05)?.id ?? ''
+  current.value = [...recorded.value].reverse().find(l => l.t <= t + 0.05)?.id ?? ''
 }
 
 const listened = ref(false)
@@ -25,7 +29,7 @@ const storeKey = computed(() => `listened:${slug}/${guide}:${video.value?.record
 watch(storeKey, (k) => { try { listened.value = localStorage.getItem(k) === '1' } catch {} }, { immediate: true })
 watch(listened, (v) => { try { localStorage.setItem(storeKey.value, v ? '1' : '0') } catch {} })
 
-async function exportVideo() {
+async function showInFinder() {
   problem.value = ''
   try { await $fetch(`${base}/reveal`, { method: 'POST' }) } catch (e) { problem.value = errorText(e) }
 }
@@ -34,27 +38,32 @@ async function exportVideo() {
 <template>
   <div class="flex h-screen min-h-[640px] flex-col overflow-hidden">
     <TopBar :crumbs="[{ label: video?.app.name ?? '', to: `/apps/${slug}` }, { label: video?.title ?? '' }]">
-      <NuxtLink :to="`/apps/${slug}/v/${guide}`" class="inline-flex h-8 items-center rounded-lg border border-edge px-3.5 font-medium text-fg no-underline">Edit</NuxtLink>
-      <button :disabled="!video?.recorded" class="h-8 rounded-lg border-0 bg-fg px-3.5 font-semibold text-ink disabled:opacity-50" @click="exportVideo">Show MP4 in Finder</button>
+      <NuxtLink :to="`/apps/${slug}/v/${guide}`" class="btn btn-secondary"><PhPencilSimple :size="16" />Edit</NuxtLink>
+      <button type="button" class="btn btn-primary" :disabled="!video?.recorded" @click="showInFinder"><PhFolderOpen :size="16" />Show in Finder</button>
     </TopBar>
+    <p v-if="error || problem" class="m-0 border-b border-line px-4 py-2 text-rec" role="alert">{{ problem || error }}</p>
+    <p v-else-if="video?.status === 'changed'" class="m-0 border-b border-line px-4 py-2 text-muted">The script changed after filming. This video still shows the old script.</p>
 
-    <main class="flex min-h-0 flex-1 flex-col items-center justify-center gap-[18px] px-10 pt-1 max-sm:px-4">
-      <p v-if="error" class="m-0 text-rec">{{ error }}</p>
-      <template v-if="video?.recorded">
-        <video
-          ref="player" :src="`${base}/video?v=${video.recorded.duration}`" :poster="lastId ? frame(lastId) ?? undefined : undefined" controls preload="metadata"
-          class="block aspect-[1440/900] max-h-[calc(100vh-280px)] w-full max-w-[860px] rounded-[10px] bg-black shadow-[0_0_0_1px_rgba(255,255,255,.06),0_30px_60px_-10px_rgba(0,0,0,.7)]"
-          @timeupdate="onTime"
-        />
-        <p class="m-0 text-muted">{{ mmss(video.recorded.duration) }} · filmed on the live site · saves answered in the browser<template v-if="video.status === 'changed'"> · <span class="text-fg">script changed since</span></template></p>
-        <label class="flex items-center gap-2 text-[13px] text-faint">
-          <input v-model="listened" type="checkbox" class="m-0 size-[15px]">I've listened to it
-        </label>
-        <p v-if="problem" class="m-0 text-rec">{{ problem }}</p>
-      </template>
-      <p v-else-if="video" class="m-0 text-muted">Not filmed yet. <NuxtLink :to="`/apps/${slug}/v/${guide}`" class="text-fg">Back to the script</NuxtLink></p>
-    </main>
-
-    <FrameStrip v-if="lines.length" :lines="lines" :src="frame" :lengths="lengths" :selected="current" :times="times" mode="chapters" @pick="jump" />
+    <div class="flex min-h-0 flex-1">
+      <section class="w-[42%] min-w-[380px] max-w-[520px] flex-none overflow-y-auto border-r border-line" aria-label="Chapters">
+        <ScriptLines v-if="scriptLines.length" :lines="scriptLines" :selected="current" :times="times" :one-way="oneWayLines" @select="jump" />
+      </section>
+      <main class="flex min-w-0 flex-1 flex-col items-center justify-center gap-3 overflow-y-auto p-6">
+        <div v-if="video?.recorded" class="flex w-full max-w-[860px] flex-col gap-3">
+          <div class="frame">
+            <video
+              ref="player" :src="`${base}/video?v=${video.recorded.duration}`" :poster="lastId ? frame(lastId) ?? undefined : undefined"
+              controls preload="metadata" class="block aspect-[1440/900] w-full bg-black" @timeupdate="onTime"
+            />
+          </div>
+          <p class="meta m-0 text-center">{{ mmss(video.recorded.duration) }} · {{ recorded.length }} lines · filmed on the live site; saves were answered in the browser, so real data is unchanged</p>
+          <FrameStrip :lines="recorded" :src="frame" :lengths="lengths" :selected="current" :times="times" :one-way="oneWayLines" @pick="jump" />
+          <label class="mt-1 flex cursor-pointer items-center gap-2 self-center text-[13px] text-muted">
+            <input v-model="listened" type="checkbox" class="m-0 size-4 accent-[var(--text)]"><PhHeadphones :size="15" />I've listened to it
+          </label>
+        </div>
+        <p v-else-if="video" class="m-0 text-muted">Not filmed yet. <NuxtLink :to="`/apps/${slug}/v/${guide}`">Back to the script</NuxtLink></p>
+      </main>
+    </div>
   </div>
 </template>

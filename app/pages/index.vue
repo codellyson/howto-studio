@@ -1,8 +1,11 @@
 <script setup lang="ts">
+import { PhGearSix, PhPlus } from '@phosphor-icons/vue'
+
 type Video = { guide: string, title: string, status: string, cover: string | null }
 type App = { slug: string, name: string, site: string, videos: Video[] }
 const { data: apps, error } = usePoll<App[]>(() => '/api/apps', () => false)
 
+// Home shows each app's first filmed video.
 function cover(app: App) {
   const v = app.videos.find(v => v.cover)
   return v ? `/api/apps/${app.slug}/videos/${v.guide}/frame/${v.cover}.jpg` : null
@@ -12,35 +15,33 @@ function cover(app: App) {
 <template>
   <div class="flex min-h-screen flex-col">
     <TopBar>
-      <NuxtLink to="/settings" aria-label="Settings" class="grid size-[34px] place-items-center rounded-lg text-muted hover:bg-raise hover:text-fg">
-        <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
-      </NuxtLink>
+      <NuxtLink to="/settings" aria-label="Settings" class="btn btn-plain btn-icon"><PhGearSix :size="20" /></NuxtLink>
     </TopBar>
 
-    <main class="mx-auto flex w-full max-w-[1000px] flex-1 flex-col gap-7 px-10 py-[72px] max-sm:px-4">
-      <h1 class="m-0 text-[28px] font-semibold tracking-[-0.02em]">Your apps</h1>
-      <p v-if="error" class="m-0 text-rec">{{ error }}</p>
-      <section class="grid grid-cols-2 gap-5 max-sm:grid-cols-1">
-        <NuxtLink v-for="app in apps ?? []" :key="app.slug" :to="`/apps/${app.slug}`" class="flex flex-col gap-3.5 no-underline">
-          <span class="block rounded-[14px] bg-gradient-to-b from-[#2A2A2F] to-[#1C1C20] p-[22px] shadow-[inset_0_1px_0_rgba(255,255,255,.06),0_24px_48px_-18px_rgba(0,0,0,.8)]">
-            <img v-if="cover(app)" :src="cover(app)!" alt="" class="block aspect-[16/10] w-full rounded-lg object-cover shadow-[0_14px_30px_rgba(0,0,0,.45)]">
-            <span v-else class="grid aspect-[16/10] place-items-center rounded-lg bg-[#17171B] text-muted">No videos yet</span>
-          </span>
+    <main class="mx-auto flex w-full max-w-[1000px] flex-1 flex-col gap-6 px-8 py-12 max-sm:px-4">
+      <h1 class="m-0 font-serif text-[30px] leading-[1.15] font-medium tracking-[-0.01em]">Your apps</h1>
+      <p v-if="error" class="m-0 text-rec" role="alert">{{ error }}</p>
+
+      <div v-if="apps && !apps.length" class="flex flex-col items-start gap-2 border border-ink px-[18px] py-[22px]">
+        <p class="m-0 font-serif text-[18px]">No apps yet.</p>
+        <span class="text-[13px] text-muted">Connect one: point the studio at its code folder and the site to film.</span>
+        <NuxtLink to="/connect" class="btn btn-primary mt-1"><PhPlus :size="16" />Connect an app</NuxtLink>
+      </div>
+
+      <section v-else class="grid grid-cols-2 gap-6 max-sm:grid-cols-1">
+        <NuxtLink v-for="(app, i) in apps ?? []" :key="app.slug" :to="`/apps/${app.slug}`" class="land flex flex-col gap-3 no-underline" :style="{ animationDelay: `${i * 60}ms` }">
+          <img v-if="cover(app)" :src="cover(app)!" alt="" class="frame block aspect-[1440/750] w-full object-cover">
+          <span v-else class="frame unfilmed grid aspect-[1440/750] place-items-center text-muted">No videos yet</span>
           <span class="flex items-baseline gap-2.5">
-            <span class="text-[15px] font-semibold text-fg">{{ app.name }}</span>
-            <span class="text-muted">{{ app.videos.length }} {{ app.videos.length === 1 ? 'video' : 'videos' }}</span>
+            <span class="font-medium">{{ app.name }}</span>
+            <span class="meta">{{ app.videos.length }} {{ app.videos.length === 1 ? 'video' : 'videos' }}</span>
           </span>
         </NuxtLink>
-        <NuxtLink to="/connect" class="flex flex-col gap-3.5 no-underline">
-          <span class="block rounded-[14px] p-[22px] shadow-[inset_0_0_0_1.5px_#26262C] hover:shadow-[inset_0_0_0_1.5px_#3A3A42]">
-            <span class="grid aspect-[16/10] place-items-center text-muted">
-              <span class="flex flex-col items-center gap-2.5">
-                <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                Connect an app
-              </span>
-            </span>
+        <NuxtLink v-if="apps?.length" to="/connect" class="flex flex-col gap-3 no-underline">
+          <span class="grid aspect-[1440/750] place-items-center border border-dashed border-line-strong text-muted hover:border-ink hover:text-ink">
+            <span class="flex flex-col items-center gap-2"><PhPlus :size="20" />Connect an app</span>
           </span>
-          <span class="text-muted">Point it at the code and the site.</span>
+          <span class="meta">Point it at the code folder and the site.</span>
         </NuxtLink>
       </section>
     </main>

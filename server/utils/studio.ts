@@ -173,7 +173,7 @@ const TOOLS = ['Read', 'Glob', 'Grep', 'Write', 'Edit', ...BASH.map(c => `Bash($
 
 // Runs a headless Claude Code session and turns its tool calls into plain progress lines.
 export function runClaude(k: string, kind: Job['kind'], prompt: string, opts: { cwd: string, env?: Record<string, string>, schema?: object, readOnly?: boolean, onDone?: (out: any) => void }) {
-  if (busy(k)) throw createError({ statusCode: 409, statusMessage: 'Already working on this' })
+  if (busy(k)) throw createError({ statusCode: 409, statusMessage: 'This is already running.' })
   const job: Job = { kind, state: 'working', steps: [], started: Date.now() }
   jobs.set(k, job)
   const args = ['-p', '--model', MODEL, '--output-format', 'stream-json', '--verbose', '--no-session-persistence', '--add-dir', SKILL]
@@ -219,8 +219,8 @@ export function runClaude(k: string, kind: Job['kind'], prompt: string, opts: { 
         job.state = 'done'
       } catch (e: any) {
         job.state = 'error'
-        // The agent's own last words usually say why.
-        job.error = lastText ? `${e.message}. The agent said: ${lastText.slice(0, 600)}` : e.message
+        // The prompts ask the agent to end with a short, plain account of where it stopped and why.
+        job.error = lastText ? `${e.message}. ${lastText.slice(0, 400)}` : `${e.message}.`
       }
     }
     jobs.save(k, job)

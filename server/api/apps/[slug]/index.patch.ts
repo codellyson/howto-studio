@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
   if (body.fakeSaves !== undefined) app.fakeSaves = !!body.fakeSaves
   if (body.repo !== undefined) {
     const repo = resolve(String(body.repo).trim().replace(/^~(?=\/|$)/, homedir()))
-    if (!existsSync(repo)) throw createError({ statusCode: 400, statusMessage: 'That code folder does not exist' })
+    if (!existsSync(repo)) throw createError({ statusCode: 400, statusMessage: 'There is no folder at that path.' })
     app.repo = repo
   }
   if (body.site !== undefined) {
