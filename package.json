@@ -1,0 +1,32 @@
+{
+  "name": "howto-studio",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "nuxt dev --port 4700",
+    "build": "nuxt build",
+    "test": "node --test test/*.test.ts",
+    "postinstall": "nuxt prepare"
+  },
+  "dependencies": {
+    "nuxt": "^4.6.4",
+    "vue": "^3.5.45",
+    "vue-router": "^5.5.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.5",
+    "@types/node": "^26.6.6",
+    "tailwindcss": "^4.3.5",
+    "typescript": "^6.0.3",
+    "vue-tsc": "^3.3.14"
+  }
+}

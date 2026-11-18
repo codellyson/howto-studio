@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>How-to Studio</title>
+<style>
+  html, body { height: 100%; margin: 0; }
+  body { display: grid; place-items: center; background: #0E0E10; color: #8A8A93; -webkit-user-select: none; user-select: none; cursor: default; font: 14px -apple-system, BlinkMacSystemFont, system-ui, sans-serif; text-align: center; }
+</style>
+</head>
+<body>
+  <p id="msg"></p>
+  <script>
+    // The studio is a local Node server the app starts; open it once the app confirms it is ours.
+    (async function wait(tries = 0) {
+      let status = 'starting';
+      try { status = await window.__TAURI__.core.invoke('engine_status'); } catch {}
+      if (status === 'ours') { location.replace('http://localhost:4700/'); return; }
+      const msg = document.getElementById('msg');
+      if (status === 'other' && tries >= 6) msg.innerHTML = 'Another program is using port 4700.<br>Quit it, then open How-to Studio again.';
+      else if (tries === 6) msg.textContent = 'Starting…';
+      else if (tries === 60) msg.innerHTML = 'The studio is taking too long to start.<br>Check that Node.js 22 or newer is installed, then open How-to Studio again.';
+      setTimeout(() => wait(tries + 1), 500);
+    })();
+  </script>
+</body>
+</html>

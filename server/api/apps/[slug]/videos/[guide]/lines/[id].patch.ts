@@ -1,0 +1,11 @@
+export default defineEventHandler(async (event) => {
+  const app = appOr404(getRouterParam(event, 'slug'))
+  const guide = guideOr404(app, getRouterParam(event, 'guide'))
+  const id = String(getRouterParam(event, 'id'))
+  if (!/^L\d+$/.test(id)) throw createError({ statusCode: 400, statusMessage: 'No such line' })
+  if (busy(key(app.slug, guide))) throw createError({ statusCode: 409, statusMessage: 'Wait for the current work to finish' })
+  const voice = String((await readBody<{ voice?: string }>(event))?.voice ?? '')
+  if (voice.length > 400) throw createError({ statusCode: 400, statusMessage: 'Keep a line under 400 characters' })
+  setLineVoice(app.slug, guide, id, voice)
+  return readScript(app.slug, guide)
+})

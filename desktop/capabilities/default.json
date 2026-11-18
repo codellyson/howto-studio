@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The launch page may ask whether the engine is up; the engine page gets window basics only.",
+  "windows": ["main"],
+  "remote": { "urls": ["http://localhost:4700/*"] },
+  "permissions": ["core:default", "allow-engine-status"]
+}

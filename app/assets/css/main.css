@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: Inter, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --color-ink: #0E0E10;
+  --color-panel: #19191C;
+  --color-raise: #1A1A1E;
+  --color-field: #141417;
+  --color-line: #1F1F24;
+  --color-edge: #2A2A30;
+  --color-fg: #ECECEE;
+  --color-soft: #B4B4BC;
+  --color-muted: #8A8A93;
+  --color-faint: #6E6E78;
+  --color-dim: #55555D;
+  --color-amber: #E3B66A;
+  --color-rec: #E5484D;
+}
+
+html, body { background: var(--color-ink); color: var(--color-fg); }
+body { margin: 0; font-family: var(--font-sans); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+:focus-visible { outline: 2px solid var(--color-fg); outline-offset: 2px; border-radius: 6px; }
+button, a, input, textarea, select { transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease, opacity 150ms ease, box-shadow 150ms ease; }

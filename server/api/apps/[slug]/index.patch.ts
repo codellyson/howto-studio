@@ -1,0 +1,23 @@
+import { existsSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { resolve } from 'node:path'
+
+export default defineEventHandler(async (event) => {
+  const app = appOr404(getRouterParam(event, 'slug'))
+  const body = await readBody<Partial<AppConfig>>(event)
+  if (body.voice !== undefined) {
+    if (!VOICES[body.voice]) throw createError({ statusCode: 400, statusMessage: 'Unknown voice' })
+    app.voice = body.voice
+  }
+  if (body.fakeSaves !== undefined) app.fakeSaves = !!body.fakeSaves
+  if (body.repo !== undefined) {
+    const repo = resolve(String(body.repo).trim().replace(/^~(?=\/|$)/, homedir()))
+    if (!existsSync(repo)) throw createError({ statusCode: 400, statusMessage: 'That code folder does not exist' })
+    app.repo = repo
+  }
+  if (body.site !== undefined) {
+    try { app.site = new URL(String(body.site).trim()).origin } catch { throw createError({ statusCode: 400, statusMessage: 'Enter the full site address, starting with https://' }) }
+  }
+  writeApp(app)
+  return app
+})
