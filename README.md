@@ -2,13 +2,13 @@
 
 A Mac app for making narrated how-to videos of your own web app. You give it the app's code and the site to film. An agent reads the code, writes a script you edit as a storyboard, and films the real site with a computer voice. Every save is answered inside the browser, so live data never changes.
 
-It is a front end for the `howto-video` skill (`~/.claude/skills/howto-video`). Each step is a headless `claude -p` run with that skill.
+It is a front end for the `howto-video` skill, which lives in this repo under `skill/`. Each step is a headless `claude -p` run with that skill.
 
 ## Needs
 
 - Node 22+, pnpm, Python 3, ffmpeg
 - Claude Code (`claude`) signed in
-- The howto-video skill, with its Kokoro voice venv (see the skill's setup)
+- The howto-video skill linked where Claude Code finds it: `ln -s "$PWD/skill" ~/.claude/skills/howto-video`, plus its Kokoro voice venv (see `skill/SKILL.md`)
 
 ## Run
 
