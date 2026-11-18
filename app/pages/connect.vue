@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PhCircleNotch, PhCode, PhFolderOpen, PhGlobeSimple, PhLockSimple, PhCheck } from '@phosphor-icons/vue'
+import { PhCircleNotch, PhCode, PhDesktop, PhFolderOpen, PhGlobeSimple, PhLockSimple, PhCheck, PhTerminal } from '@phosphor-icons/vue'
 
 type Summary = { framework: string, clientRendered: boolean, signIn: string, pages: string[], saves: { oneWay: boolean }[] }
 type App = { slug: string, name: string, summary?: Summary, job: { state: string, steps: string[], error?: string } | null }
@@ -12,6 +12,17 @@ async function choose() {
   try { const p = await pickFolder(repo.value); if (p) repo.value = p } catch (e) { problem.value = errorText(e) } finally { picking.value = false }
 }
 const site = ref('')
+// Where the app is filmed: its live site, or its dev server on this Mac, which the studio starts when needed.
+const mode = ref<'live' | 'local'>('live')
+const start = ref('')
+const localUrl = ref('')
+// The dev command and address are read from package.json; anything typed by hand is kept.
+async function detect() {
+  if (mode.value !== 'local' || !repo.value.trim()) return
+  const found = await $fetch<{ command: string, url: string } | null>('/api/detect-local', { method: 'POST', body: { repo: repo.value } }).catch(() => null)
+  if (found) { start.value ||= found.command; localUrl.value ||= found.url }
+}
+watch([repo, mode], () => { start.value = ''; localUrl.value = ''; detect() })
 const sending = ref(false)
 const problem = ref('')
 const slug = computed(() => String(route.query.app ?? ''))
@@ -31,7 +42,10 @@ async function connect() {
   sending.value = true
   problem.value = ''
   try {
-    const r = await $fetch<{ slug: string }>('/api/apps', { method: 'POST', body: { repo: repo.value, site: site.value } })
+    const body = mode.value === 'local'
+      ? { repo: repo.value, mode: 'local', site: localUrl.value, start: start.value }
+      : { repo: repo.value, site: site.value }
+    const r = await $fetch<{ slug: string }>('/api/apps', { method: 'POST', body })
     await navigateTo({ query: { app: r.slug } })
   } catch (e) { problem.value = errorText(e) } finally { sending.value = false }
 }
@@ -64,10 +78,31 @@ const steps = computed(() => app.value?.job?.steps.slice(-6) ?? [])
             <button type="button" class="btn btn-secondary h-8" :disabled="picking" @click="choose"><PhFolderOpen :size="16" />Choose…</button>
           </div>
         </div>
-        <label class="flex flex-col gap-1.5">
+        <div class="flex flex-col gap-1.5">
+          <span id="where" class="flex items-center gap-1.5">Film it on</span>
+          <span class="flex self-start border border-ink" role="radiogroup" aria-labelledby="where">
+            <button
+              v-for="m in (['live', 'local'] as const)" :key="m" type="button" role="radio" :aria-checked="mode === m"
+              class="flex h-[30px] cursor-pointer items-center gap-1.5 border-0 border-l border-ink px-3 text-[13px] first:border-l-0"
+              :class="mode === m ? 'bg-ink text-page' : 'bg-page text-ink hover:bg-hover'" @click="mode = m"
+            ><component :is="m === 'live' ? PhGlobeSimple : PhDesktop" :size="15" />{{ m === 'live' ? 'Live site' : 'This Mac' }}</button>
+          </span>
+        </div>
+        <label v-if="mode === 'live'" class="flex flex-col gap-1.5">
           <span class="flex items-center gap-1.5"><PhGlobeSimple :size="16" />Site to film</span>
           <input v-model="site" required type="url" placeholder="https://app.example.com" class="field">
         </label>
+        <template v-else>
+          <label class="flex flex-col gap-1.5">
+            <span class="flex items-center gap-1.5"><PhTerminal :size="16" />Command that starts it</span>
+            <input v-model="start" required placeholder="pnpm dev" class="field font-mono text-[13px]">
+          </label>
+          <label class="flex flex-col gap-1.5">
+            <span class="flex items-center gap-1.5"><PhDesktop :size="16" />Address on this Mac</span>
+            <input v-model="localUrl" required type="url" placeholder="http://localhost:3000" class="field">
+          </label>
+          <p class="meta m-0">The studio runs this command in the code folder before writing or filming, and stops it after. If something already answers at the address, that is used as it is.</p>
+        </template>
         <button :disabled="sending" class="btn btn-primary mt-2 self-start">{{ sending ? 'Starting' : 'Read the code' }}</button>
       </form>
 

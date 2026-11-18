@@ -1,6 +1,6 @@
 # How-to Studio
 
-A Mac app for making narrated how-to videos of your own web app. You give it the app's code and the site to film. An agent reads the code, writes a script you edit as a storyboard, and films the real site with a computer voice. Every save is answered inside the browser, so live data never changes.
+A Mac app for making narrated how-to videos of your own web app. You give it the app's code and the site to film: its live site, or its dev server on this Mac, which the studio starts before a job (using the dev command from package.json) and stops after. An agent reads the code, writes a script you edit as a storyboard, and films the real site with a computer voice. Every save is answered inside the browser, so live data never changes.
 
 It is a front end for the `howto-video` skill, which lives in this repo under `skill/`. Each step is a headless `claude -p` run with that skill.
 

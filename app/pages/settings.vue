@@ -1,16 +1,20 @@
 <script setup lang="ts">
-import { PhCode, PhFolderOpen, PhGlobeSimple, PhLockSimple, PhTrash, PhWaveform, PhCheck } from '@phosphor-icons/vue'
+import { PhCode, PhDesktop, PhFolderOpen, PhGlobeSimple, PhTerminal, PhLockSimple, PhTrash, PhWaveform, PhCheck } from '@phosphor-icons/vue'
 
-type App = { slug: string, name: string, repo: string, site: string, voice: string, fakeSaves: boolean, signedIn?: boolean, summary?: { signIn: string } }
+type App = { slug: string, name: string, repo: string, site: string, mode?: 'live' | 'local', start?: string, voice: string, fakeSaves: boolean, signedIn?: boolean, summary?: { signIn: string } }
 
 const route = useRoute()
 const apps = ref<App[] | null>(null)
 const current = computed(() => apps.value?.find(a => a.slug === route.query.app) ?? apps.value?.[0])
 const problem = ref('')
 const signin = ref<{ state: string, error?: string } | null>(null)
-const editing = ref<'repo' | 'site' | ''>('')
+const editing = ref<'repo' | 'site' | 'start' | ''>('')
 const draft = ref('')
 const confirmRemove = ref(false)
+// An app filmed on this Mac also has the command that starts it.
+const fields = computed(() => (current.value?.mode === 'local' ? ['repo', 'start', 'site'] : ['repo', 'site']) as ('repo' | 'site' | 'start')[])
+const LABELS = computed(() => ({ repo: 'Code folder', start: 'Command that starts it', site: current.value?.mode === 'local' ? 'Address on this Mac' : 'Site to film' }))
+const ICONS = computed(() => ({ repo: PhCode, start: PhTerminal, site: current.value?.mode === 'local' ? PhDesktop : PhGlobeSimple }))
 const VOICES = ['Michael', 'Adam', 'Heart', 'Bella', 'George', 'Emma']
 
 async function load() {
@@ -38,7 +42,7 @@ async function chooseRepo() {
   } catch (e) { problem.value = errorText(e) }
 }
 
-function edit(field: 'repo' | 'site') {
+function edit(field: 'repo' | 'site' | 'start') {
   draft.value = current.value?.[field] ?? ''
   editing.value = field
 }
@@ -90,17 +94,17 @@ async function remove() {
       <main v-if="current" class="flex min-w-0 flex-[999_1_520px] flex-col">
         <h1 class="m-0 mb-2 font-serif text-[30px] leading-[1.15] font-medium tracking-[-0.01em]">{{ current.name }}</h1>
 
-        <div v-for="f in (['repo', 'site'] as const)" :key="f" class="flex items-center gap-4 border-b border-line py-4">
-          <component :is="f === 'repo' ? PhCode : PhGlobeSimple" :size="16" class="flex-none" />
+        <div v-for="f in fields" :key="f" class="flex items-center gap-4 border-b border-line py-4">
+          <component :is="ICONS[f]" :size="16" class="flex-none" />
           <div class="flex min-w-0 flex-1 flex-col gap-1">
-            <span>{{ f === 'repo' ? 'Code folder' : 'Site to film' }}</span>
+            <span>{{ LABELS[f] }}</span>
             <form v-if="editing === f" class="flex gap-2" @submit.prevent="commit">
-              <input v-model="draft" class="field min-w-0 flex-1" :aria-label="f === 'repo' ? 'Code folder' : 'Site to film'" autofocus @keydown.esc="editing = ''">
+              <input v-model="draft" class="field min-w-0 flex-1" :aria-label="LABELS[f]" autofocus @keydown.esc="editing = ''">
               <button v-if="f === 'repo'" type="button" class="btn btn-secondary" @click="chooseRepo"><PhFolderOpen :size="16" />Choose…</button>
               <button class="btn btn-primary">Save</button>
               <button type="button" class="btn btn-plain" @click="editing = ''">Cancel</button>
             </form>
-            <span v-else class="truncate text-[13px] text-muted">{{ current[f] }}</span>
+            <span v-else class="truncate text-[13px] text-muted" :class="{ 'font-mono': f === 'start' }">{{ current[f] }}</span>
           </div>
           <button v-if="editing !== f" type="button" class="btn btn-secondary" @click="edit(f)">Change</button>
         </div>

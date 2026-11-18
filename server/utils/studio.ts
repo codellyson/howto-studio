@@ -12,7 +12,8 @@ export const SAFE = /^[a-z0-9][a-z0-9-]{0,60}$/
 
 export type Save = { method: string, route: string, what: string, oneWay: boolean }
 export type Summary = { framework: string, clientRendered: boolean, signIn: string, signedInUrl: string, pages: string[], saves: Save[] }
-export type AppConfig = { slug: string, name: string, repo: string, site: string, voice: string, fakeSaves: boolean, summary?: Summary, signedIn?: boolean }
+// mode 'local': the site is the app's dev server on this Mac, started with `start` in the repo when it isn't running.
+export type AppConfig = { slug: string, name: string, repo: string, site: string, voice: string, fakeSaves: boolean, mode?: 'live' | 'local', start?: string, summary?: Summary, signedIn?: boolean }
 export type Line = { id: string, screen: string, voice: string }
 export type Job = { kind: 'connect' | 'script' | 'change' | 'record' | 'signin' | 'render', state: 'working' | 'done' | 'error', steps: string[], error?: string, started: number, pid?: number, detached?: boolean }
 
@@ -247,61 +248,70 @@ const BASH = ['node', 'python3', 'pnpm', 'npx', 'ffmpeg', 'ffprobe', 'curl', 'ls
 const TOOLS = ['Read', 'Glob', 'Grep', 'Write', 'Edit', ...BASH.map(c => `Bash(${c}:*)`), 'Bash(GUIDE_PROFILE=:*)', 'Bash(for :*)', 'Bash(cd :*)']
 
 // Runs a headless Claude Code session and turns its tool calls into plain progress lines.
-export function runClaude(k: string, kind: Job['kind'], prompt: string, opts: { cwd: string, env?: Record<string, string>, schema?: object, readOnly?: boolean, onDone?: (out: any) => void }) {
+export function runClaude(k: string, kind: Job['kind'], prompt: string, opts: { cwd: string, env?: Record<string, string>, schema?: object, readOnly?: boolean, onDone?: (out: any) => void, before?: (say: (t: string) => void) => Promise<void>, after?: () => void }) {
   if (busy(k)) throw createError({ statusCode: 409, statusMessage: 'This is already running.' })
   const job: Job = { kind, state: 'working', steps: [], started: Date.now() }
   jobs.set(k, job)
-  const args = ['-p', '--model', MODEL, '--output-format', 'stream-json', '--verbose', '--no-session-persistence', '--add-dir', SKILL]
-  if (opts.schema) args.push('--json-schema', JSON.stringify(opts.schema))
-  args.push('--allowedTools', ...(opts.readOnly ? ['Read', 'Glob', 'Grep'] : TOOLS))
-  if (opts.readOnly) args.push('--disallowedTools', 'Bash', 'Edit', 'Write')
-  const child = spawn('claude', args, { cwd: opts.cwd, env: { ...process.env, ...opts.env, HOWTO_STUDIO_CHILD: '1' } })
-  job.pid = child.pid
-  jobs.save(k, job)
   const say = (t?: string | null) => { if (t && job.steps.at(-1) !== t) { job.steps = [...job.steps, t].slice(-60); jobs.save(k, job) } }
-  let buf = ''
-  let result: any = null
-  let failure = ''
-  let lastText = ''
-  child.stdout.on('data', (d) => {
-    buf += d
-    const lines = buf.split('\n')
-    buf = lines.pop() ?? ''
-    for (const line of lines) {
-      let ev: any
-      try { ev = JSON.parse(line) } catch { continue }
-      if (ev.type === 'result') {
-        result = ev.structured_output ?? ev.result
-        if (ev.is_error) failure = String(ev.result ?? 'The agent stopped with an error')
-      }
-      for (const c of ev.type === 'assistant' ? ev.message?.content ?? [] : []) {
-        if (c.type === 'tool_use') say(describe(c.name, c.input ?? {}))
-        if (c.type === 'text' && c.text?.trim()) lastText = c.text.trim()
-      }
-    }
-  })
-  let stderr = ''
-  child.stderr.on('data', (d) => { stderr = (stderr + d).slice(-2000) })
-  child.on('error', (e) => { job.state = 'error'; job.error = `Could not start claude: ${e.message}`; jobs.save(k, job) })
-  child.on('close', (code) => {
-    if (job.state === 'error') return
-    if (code !== 0 || failure) {
-      job.state = 'error'
-      job.error = failure || stderr.trim().split('\n').at(-1) || `claude exited with code ${code}`
-    } else {
-      try {
-        opts.onDone?.(result)
-        job.state = 'done'
-      } catch (e: any) {
-        job.state = 'error'
-        // The prompts ask the agent to end with a short, plain account of where it stopped and why.
-        job.error = lastText ? `${e.message}. ${lastText.slice(0, 400)}` : `${e.message}.`
-      }
-    }
-    jobs.save(k, job)
-  })
-  child.stdin.end(prompt)
+  const fail = (message: string) => { job.state = 'error'; job.error = message; jobs.save(k, job); opts.after?.() }
+  ;(async () => {
+    try { await opts.before?.(say) } catch (e: any) { return fail(`${e.message}.`) }
+    launch()
+  })()
   return job
+
+  function launch() {
+    const args = ['-p', '--model', MODEL, '--output-format', 'stream-json', '--verbose', '--no-session-persistence', '--add-dir', SKILL]
+    if (opts.schema) args.push('--json-schema', JSON.stringify(opts.schema))
+    args.push('--allowedTools', ...(opts.readOnly ? ['Read', 'Glob', 'Grep'] : TOOLS))
+    if (opts.readOnly) args.push('--disallowedTools', 'Bash', 'Edit', 'Write')
+    const child = spawn('claude', args, { cwd: opts.cwd, env: { ...process.env, ...opts.env, HOWTO_STUDIO_CHILD: '1' } })
+    job.pid = child.pid
+    jobs.save(k, job)
+    let buf = ''
+    let result: any = null
+    let failure = ''
+    let lastText = ''
+    child.stdout.on('data', (d) => {
+      buf += d
+      const lines = buf.split('\n')
+      buf = lines.pop() ?? ''
+      for (const line of lines) {
+        let ev: any
+        try { ev = JSON.parse(line) } catch { continue }
+        if (ev.type === 'result') {
+          result = ev.structured_output ?? ev.result
+          if (ev.is_error) failure = String(ev.result ?? 'The agent stopped with an error')
+        }
+        for (const c of ev.type === 'assistant' ? ev.message?.content ?? [] : []) {
+          if (c.type === 'tool_use') say(describe(c.name, c.input ?? {}))
+          if (c.type === 'text' && c.text?.trim()) lastText = c.text.trim()
+        }
+      }
+    })
+    let stderr = ''
+    child.stderr.on('data', (d) => { stderr = (stderr + d).slice(-2000) })
+    child.on('error', (e) => { fail(`Could not start claude: ${e.message}`) })
+    child.on('close', (code) => {
+      if (job.state === 'error') return
+      if (code !== 0 || failure) {
+        job.state = 'error'
+        job.error = failure || stderr.trim().split('\n').at(-1) || `claude exited with code ${code}`
+      } else {
+        try {
+          opts.onDone?.(result)
+          job.state = 'done'
+        } catch (e: any) {
+          job.state = 'error'
+          // The prompts ask the agent to end with a short, plain account of where it stopped and why.
+          job.error = lastText ? `${e.message}. ${lastText.slice(0, 400)}` : `${e.message}.`
+        }
+      }
+      jobs.save(k, job)
+      opts.after?.()
+    })
+    child.stdin.end(prompt)
+  }
 }
 
 function describe(name: string, i: any): string | null {
