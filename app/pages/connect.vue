@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { PhCircleNotch, PhCode, PhGlobeSimple, PhLockSimple, PhCheck } from '@phosphor-icons/vue'
+import { PhCircleNotch, PhCode, PhFolderOpen, PhGlobeSimple, PhLockSimple, PhCheck } from '@phosphor-icons/vue'
 
 type Summary = { framework: string, clientRendered: boolean, signIn: string, pages: string[], saves: { oneWay: boolean }[] }
 type App = { slug: string, name: string, summary?: Summary, job: { state: string, steps: string[], error?: string } | null }
 
 const route = useRoute()
 const repo = ref('')
+const picking = ref(false)
+async function choose() {
+  picking.value = true
+  try { const p = await pickFolder(repo.value); if (p) repo.value = p } catch (e) { problem.value = errorText(e) } finally { picking.value = false }
+}
 const site = ref('')
 const sending = ref(false)
 const problem = ref('')
@@ -52,10 +57,13 @@ const steps = computed(() => app.value?.job?.steps.slice(-6) ?? [])
       </div>
 
       <form v-if="!slug" class="flex flex-col gap-4" @submit.prevent="connect">
-        <label class="flex flex-col gap-1.5">
-          <span class="flex items-center gap-1.5"><PhCode :size="16" />Code folder</span>
-          <input v-model="repo" required placeholder="~/projects/my-app" class="field">
-        </label>
+        <div class="flex flex-col gap-1.5">
+          <label for="repo" class="flex items-center gap-1.5"><PhCode :size="16" />Code folder</label>
+          <div class="flex gap-2">
+            <input id="repo" v-model="repo" required placeholder="~/projects/my-app" class="field min-w-0 flex-1">
+            <button type="button" class="btn btn-secondary h-8" :disabled="picking" @click="choose"><PhFolderOpen :size="16" />Choose…</button>
+          </div>
+        </div>
         <label class="flex flex-col gap-1.5">
           <span class="flex items-center gap-1.5"><PhGlobeSimple :size="16" />Site to film</span>
           <input v-model="site" required type="url" placeholder="https://app.example.com" class="field">

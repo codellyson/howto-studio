@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PhCode, PhGlobeSimple, PhLockSimple, PhTrash, PhWaveform, PhCheck } from '@phosphor-icons/vue'
+import { PhCode, PhFolderOpen, PhGlobeSimple, PhLockSimple, PhTrash, PhWaveform, PhCheck } from '@phosphor-icons/vue'
 
 type App = { slug: string, name: string, repo: string, site: string, voice: string, fakeSaves: boolean, signedIn?: boolean, summary?: { signIn: string } }
 
@@ -28,6 +28,14 @@ async function save(patch: Partial<App>) {
     Object.assign(current.value, await $fetch<App>(url, { method: 'PATCH', body: patch }))
     return true
   } catch (e) { problem.value = errorText(e); return false }
+}
+
+// The code folder changes through the Mac's folder dialog; typing a path stays possible.
+async function chooseRepo() {
+  try {
+    const p = await pickFolder(current.value?.repo)
+    if (p) { draft.value = p; await commit() }
+  } catch (e) { problem.value = errorText(e) }
 }
 
 function edit(field: 'repo' | 'site') {
@@ -88,6 +96,7 @@ async function remove() {
             <span>{{ f === 'repo' ? 'Code folder' : 'Site to film' }}</span>
             <form v-if="editing === f" class="flex gap-2" @submit.prevent="commit">
               <input v-model="draft" class="field min-w-0 flex-1" :aria-label="f === 'repo' ? 'Code folder' : 'Site to film'" autofocus @keydown.esc="editing = ''">
+              <button v-if="f === 'repo'" type="button" class="btn btn-secondary" @click="chooseRepo"><PhFolderOpen :size="16" />Choose…</button>
               <button class="btn btn-primary">Save</button>
               <button type="button" class="btn btn-plain" @click="editing = ''">Cancel</button>
             </form>
