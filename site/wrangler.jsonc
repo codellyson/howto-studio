@@ -1,0 +1,8 @@
+{
+  "name": "howto-studio-site",
+  "compatibility_date": "2026-10-01",
+  // static site: pnpm site:build writes site/dist, served as-is
+  "assets": { "directory": "./dist" },
+  "routes": [{ "pattern": "howtostudio.kreativekorna.com", "custom_domain": true }],
+  "workers_dev": false
+}
