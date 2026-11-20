@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { PhCircleNotch, PhCode, PhDesktop, PhFolderOpen, PhGlobeSimple, PhLockSimple, PhCheck, PhTerminal } from '@phosphor-icons/vue'
+import { PhCode, PhDesktop, PhFolderOpen, PhGlobeSimple, PhLockSimple, PhCheck, PhTerminal } from '@phosphor-icons/vue'
 
 type Summary = { framework: string, clientRendered: boolean, signIn: string, pages: string[], saves: { oneWay: boolean }[] }
-type App = { slug: string, name: string, summary?: Summary, job: { state: string, steps: string[], error?: string } | null }
+type App = { slug: string, name: string, summary?: Summary, job: { state: string, steps: string[], error?: string, started?: number } | null }
 
 const route = useRoute()
 const repo = ref('')
@@ -58,7 +58,6 @@ async function retry() {
 const working = computed(() => app.value?.job?.state === 'working')
 const s = computed(() => app.value?.summary)
 const oneWay = computed(() => s.value?.saves.filter(x => x.oneWay).length ?? 0)
-const steps = computed(() => app.value?.job?.steps.slice(-6) ?? [])
 </script>
 
 <template>
@@ -106,10 +105,7 @@ const steps = computed(() => app.value?.job?.steps.slice(-6) ?? [])
         <button :disabled="sending" class="btn btn-primary mt-2 self-start">{{ sending ? 'Starting' : 'Read the code' }}</button>
       </form>
 
-      <section v-if="working" class="flex flex-col gap-2" aria-live="polite">
-        <p class="m-0 flex items-center gap-2 font-medium"><PhCircleNotch :size="16" class="spin" />Reading the code</p>
-        <p v-for="(step, i) in steps" :key="i" class="m-0" :class="i === steps.length - 1 ? 'text-ink' : 'text-muted'">{{ step }}</p>
-      </section>
+      <JobProgress v-if="app?.job && app.job.state !== 'done'" :job="{ kind: 'connect', ...app.job }" />
 
       <section v-if="s && !working" class="land flex flex-col border-t border-line">
         <div class="flex gap-4 border-b border-line py-3.5">
@@ -126,7 +122,7 @@ const steps = computed(() => app.value?.job?.steps.slice(-6) ?? [])
         </div>
       </section>
 
-      <p v-if="problem || app?.job?.state === 'error'" class="m-0 text-rec" role="alert">{{ problem || app?.job?.error }}</p>
+      <p v-if="problem" class="m-0 text-rec" role="alert">{{ problem }}</p>
       <div class="flex gap-2">
         <NuxtLink v-if="s && !working" :to="`/apps/${slug}`" class="btn btn-primary">Continue</NuxtLink>
         <button v-if="app?.job?.state === 'error'" type="button" class="btn btn-secondary" @click="retry">Read the code again</button>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PhArrowClockwise, PhChatCircle, PhCircleNotch, PhPlay } from '@phosphor-icons/vue'
+import { PhArrowClockwise, PhChatCircle, PhPlay } from '@phosphor-icons/vue'
 import type { Pin } from '~/components/PinsEditor.vue'
 
 const { slug, guide, base, data: video, error, load, frame, lengths, oneWayLines } = useVideo()
@@ -37,7 +37,6 @@ async function restyle() {
 watch(video, (v) => { if (v?.lines.length && !v.lines.some(l => l.id === selected.value)) selected.value = v.lines[0]!.id })
 const line = computed(() => video.value?.lines.find(l => l.id === selected.value))
 const working = computed(() => video.value?.job?.state === 'working')
-const steps = computed(() => video.value?.job?.steps.slice(-6) ?? [])
 
 function move(by: number) {
   const lines = video.value?.lines ?? []
@@ -113,9 +112,9 @@ const shotMeta = computed(() => {
       </button>
     </TopBar>
 
-    <p v-if="error || problem || video?.job?.state === 'error'" class="m-0 border-b border-line px-4 py-2 text-rec" role="alert">{{ problem || error || video?.job?.error }}</p>
+    <p v-if="error || problem || (video?.job?.state === 'error' && video.lines.length)" class="m-0 border-b border-line px-4 py-2 text-rec" role="alert">{{ problem || error || video?.job?.error }}</p>
     <p v-else-if="video?.status === 'changed'" class="m-0 border-b border-line px-4 py-2 text-muted">The script changed after filming. Record again to update the video.</p>
-    <p v-else-if="video?.job?.kind === 'render' && working" class="m-0 flex items-center gap-2 border-b border-line px-4 py-2 text-muted" aria-live="polite"><PhCircleNotch :size="15" class="spin" />Making the video again with the new look</p>
+    <div v-else-if="working && video?.job && video.lines.length" class="border-b border-line px-4 py-2"><JobProgress compact :job="video.job" /></div>
     <p v-else-if="view?.stale" class="m-0 flex items-center gap-3 border-b border-line px-4 py-2 text-muted">The look or marks changed. The video still has the old ones.<button type="button" class="btn btn-secondary h-7" @click="restyle">Make the video again</button></p>
 
     <div class="flex min-h-0 flex-1">
@@ -136,8 +135,8 @@ const shotMeta = computed(() => {
           />
         </template>
         <div v-if="video && !video.lines.length" class="flex flex-col gap-2 p-4" aria-live="polite">
-          <p class="m-0 flex items-center gap-2 font-medium"><PhCircleNotch v-if="working" :size="16" class="spin" />{{ working ? 'Writing the script' : 'No script yet' }}</p>
-          <p v-for="(s, i) in steps" :key="i" class="m-0" :class="i === steps.length - 1 ? 'text-ink' : 'text-muted'">{{ s }}</p>
+          <JobProgress v-if="video.job" :job="video.job" />
+          <p v-else class="m-0 font-medium">No script yet</p>
           <form v-if="!working && video.job?.state === 'error'" class="mt-4 flex flex-col gap-2" @submit.prevent="retry">
             <label for="retry-task" class="font-medium">What the video should show</label>
             <textarea id="retry-task" v-model="retryTask" rows="3" maxlength="500" required class="field h-auto resize-none py-2 leading-[1.4]" />
@@ -145,7 +144,6 @@ const shotMeta = computed(() => {
           </form>
         </div>
         <template v-else-if="video && tab === 'script'">
-          <p v-if="working" class="m-0 flex items-center gap-2 px-4 pt-4 text-muted" aria-live="polite"><PhCircleNotch :size="15" class="spin" />{{ steps.at(-1) ?? 'Working' }}</p>
           <ScriptLines :lines="video.lines" :selected="selected" :one-way="oneWayLines" :editable="!working" @select="selected = $event" @save="saveLine">
             <template v-if="view?.restyle" #selected="{ id }">
               <PinsEditor :line="id" :targets="view.lines[id]?.targets ?? []" :pins="view.pins" :disabled="working" @save="savePins" />
