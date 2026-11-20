@@ -55,3 +55,11 @@ test('an app that starts on another port is followed to the address it printed',
   assert.equal(app.site, 'http://localhost:47993')
   releaseLocal(app.slug)
 })
+
+test('a running server whose pages fail is not reused', async () => {
+  const { createServer } = await import('node:http')
+  const server = createServer((_, res) => { res.statusCode = 500; res.end('{"message":"Cannot find package \'@ai-sdk/anthropic\' imported from x"}') }).listen(47995)
+  const app = { slug: 'local-broken', name: 'T', repo: tmpdir(), site: 'http://localhost:47995', voice: 'Michael', fakeSaves: true, mode: 'local' as const, start: 'true' }
+  await assert.rejects(ensureLocal(app, () => {}), /already running at http:\/\/localhost:47995, but its pages fail \(500: Cannot find package '@ai-sdk\/anthropic'/)
+  server.close()
+})

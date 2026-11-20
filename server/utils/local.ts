@@ -57,6 +57,17 @@ async function answers(url: string) {
   try { await fetch(url, { signal: AbortSignal.timeout(2000), redirect: 'manual' }); return true } catch { return false }
 }
 
+// A server that answers can still be broken (a stale dev build answers every page with 500). Returns why, or ''.
+async function brokenAt(url: string) {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(20000), redirect: 'follow' })
+    if (res.status < 500) return ''
+    const body = (await res.text()).replace(/\\n/g, ' ')
+    const why = body.match(/(Cannot find (?:package|module)[^"<\\]{0,120}|Error:[^"<\\]{0,120})/)?.[1]?.trim()
+    return `${res.status}${why ? `: ${why}` : ''}`
+  } catch { return '' }
+}
+
 const running = new Map<string, { pid?: number, users: number }>()
 
 // Before a job: make sure the app answers at its address, starting it if needed (up to two minutes).
@@ -64,7 +75,13 @@ export async function ensureLocal(app: AppConfig, say: (step: string) => void) {
   if (app.mode !== 'local') return
   const held = running.get(app.slug)
   if (held) { held.users++; return }
-  if (await answers(app.site)) { running.set(app.slug, { users: 1 }); return }
+  if (await answers(app.site)) {
+    const broken = await brokenAt(app.site)
+    // Not ours to stop: it was running before this job. Filming it would only record error pages.
+    if (broken) throw new Error(`Something is already running at ${app.site}, but its pages fail (${broken}). Stop that server, or change the address in Settings, then try again`)
+    running.set(app.slug, { users: 1 })
+    return
+  }
   if (!app.start) throw new Error(`Nothing answers at ${app.site}, and there is no command to start the app`)
   say(`Starting the app: ${app.start}`)
   const logFile = join(appDir(app.slug), 'local.log')
@@ -104,4 +121,7 @@ export function releaseLocal(slug: string, force = false) {
 }
 
 // The studio is closing: stop every server it started.
-process.once('exit', () => { for (const slug of [...running.keys()]) releaseLocal(slug, true) })
+// Quitting the Mac app sends SIGTERM, which skips 'exit' unless it is handled, so handle both.
+const stopAll = () => { for (const slug of [...running.keys()]) releaseLocal(slug, true) }
+process.once('exit', stopAll)
+for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.once(sig, () => { stopAll(); process.exit(0) })
