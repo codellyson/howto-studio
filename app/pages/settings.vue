@@ -7,7 +7,7 @@ const route = useRoute()
 const apps = ref<App[] | null>(null)
 const current = computed(() => apps.value?.find(a => a.slug === route.query.app) ?? apps.value?.[0])
 const problem = ref('')
-const signin = ref<{ state: string, error?: string } | null>(null)
+const signin = ref<{ state: string, steps?: string[], error?: string } | null>(null)
 const editing = ref<'repo' | 'site' | 'start' | ''>('')
 const draft = ref('')
 const confirmRemove = ref(false)
@@ -113,7 +113,7 @@ async function remove() {
           <PhLockSimple :size="16" class="flex-none" />
           <div class="flex min-w-0 flex-1 flex-col">
             <span>Sign-in</span>
-            <span class="text-[13px] text-muted">{{ signin?.state === 'working' ? 'A browser window is open. Sign in there.' : current.signedIn ? 'Signed in. The session is kept for filming.' : `Not signed in. ${current.summary?.signIn ?? ''} Needed only for videos behind the sign-in.` }}</span>
+            <span class="text-[13px] text-muted">{{ signin?.state === 'working' ? (signin.steps?.at(-1)?.startsWith('Starting') ? `${signin.steps.at(-1)}…` : 'A browser window is open. Sign in there.') : current.signedIn ? 'Signed in. The session is kept for filming.' : `Not signed in. ${current.summary?.signIn ?? ''} Needed only for videos behind the sign-in.` }}</span>
           </div>
           <span v-if="current.signedIn && signin?.state !== 'working'" class="pill" aria-label="Signed in"><PhCheck :size="14" /></span>
           <button type="button" class="btn btn-secondary" :disabled="signin?.state === 'working'" @click="signIn">{{ current.signedIn ? 'Sign in again' : 'Sign in' }}</button>
