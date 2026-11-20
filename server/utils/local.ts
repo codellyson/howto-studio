@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync, openSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { appDir, type AppConfig } from './studio.ts'
+import { appDir, readApp, writeApp, type AppConfig } from './studio.ts'
 
 // Filming an app on this Mac: the studio starts its dev server for a job and stops it after,
 // unless something was already answering at that address, which is then used as it is.
@@ -39,8 +39,16 @@ function packageManager(repo: string) {
 function reason(logFile: string) {
   try {
     const lines = readFileSync(logFile, 'utf8').split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('at ') && !/ELIFECYCLE|^>/.test(l))
-    return lines.find(l => /error|already|EADDRINUSE|not found|cannot/i.test(l) && l.length > 12) ?? lines.at(-1) ?? ''
+    return lines.find(l => /error|already|EADDRINUSE|not found|cannot/i.test(l) && l.length > 12) ?? ''
   } catch { return '' }
+}
+
+// The last local address the dev server printed, such as "Local: http://127.0.0.1:3000/".
+function announced(logFile: string) {
+  try {
+    const found = [...readFileSync(logFile, 'utf8').matchAll(/https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\]):\d+/g)].map(m => m[0])
+    return found.at(-1) ?? null
+  } catch { return null }
 }
 
 export const isLocalUrl = (url: string) => { try { return ['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname) } catch { return false } }
@@ -65,14 +73,24 @@ export async function ensureLocal(app: AppConfig, say: (step: string) => void) {
   const child = spawn(process.env.SHELL || '/bin/zsh', ['-lc', app.start], { cwd: app.repo, detached: true, stdio: ['ignore', log, log] })
   child.unref()
   running.set(app.slug, { pid: child.pid, users: 1 })
+  let exited = false
   for (let i = 0; i < 120; i++) {
     await new Promise(r => setTimeout(r, 1000))
-    if (child.exitCode !== null) break
+    if (child.exitCode !== null) { exited = true; break }
     if (await answers(app.site)) return
+    // Dev servers move to another port when theirs is taken; follow the address the app printed.
+    const printed = announced(logFile)
+    if (printed && new URL(printed).origin !== new URL(app.site).origin && await answers(printed)) {
+      say(`The app started at ${printed}, not ${app.site}. Using ${printed}`)
+      app.site = new URL(printed).origin.replace('127.0.0.1', 'localhost')
+      writeApp({ ...readApp(app.slug), site: app.site })
+      return
+    }
   }
   releaseLocal(app.slug, true)
   const why = reason(logFile).replace(/\.$/, '')
-  throw new Error(`The app did not start at ${app.site}${why ? `. It said: "${why.slice(0, 160)}"` : ''}. Its full output is in local.log in the app's studio folder`)
+  if (exited) throw new Error(`The app stopped before it answered at ${app.site}${why ? `. It said: "${why.slice(0, 160)}"` : ''}. Its full output is in local.log in the app's studio folder`)
+  throw new Error(`Nothing answered at ${app.site} within two minutes, so the app was stopped. Check the address in Settings; the app's output is in local.log in its studio folder`)
 }
 
 // After a job: stop the server only if the studio started it and no other job still needs it.

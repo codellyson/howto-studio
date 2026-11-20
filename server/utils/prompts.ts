@@ -67,7 +67,7 @@ const shared = (app: AppConfig, guide: string) => `You make how-to videos with t
 - Your final message is shown to the person. Make it one or two plain sentences about the video, with no "I" or "we": if the work could not finish, say where it stopped and why (for example "Filming stopped at line 6. The Approve album button never appeared."). No praise, no exclamation marks.`
 
 export function startScript(app: AppConfig, guide: string, task: string) {
-  const prompt = `${shared(app, guide)}
+  const prompt = () => `${shared(app, guide)}
 
 Task for this video: ${task}
 
@@ -83,7 +83,7 @@ Do not make the voice and do not record. The person approves the script in the s
 }
 
 export function startChange(app: AppConfig, guide: string, request: string) {
-  const prompt = `${shared(app, guide)}
+  const prompt = () => `${shared(app, guide)}
 
 Change scripts/${guide}/script.md as asked: "${request}"
 Keep the skill's table format. If the request is about timing, pauses or clicks rather than words, record it in scripts/${guide}/notes.md so the takes follow it. Do not make the voice and do not record.`
@@ -94,7 +94,7 @@ export function startRecord(app: AppConfig, guide: string) {
   const writes = app.fakeSaves
     ? `${app.mode === 'local' ? 'The app runs on this Mac, but its data may be shared' : 'The site is live'}: fake every write as the skill describes, block everything else to its host, and confirm the data is unchanged before and after.`
     : 'Writes may go through only if this is a test environment; register afterTake to undo each one. If it looks like production, fake them instead.'
-  const prompt = `${shared(app, guide)}
+  const prompt = () => `${shared(app, guide)}
 
 Film this video now, following sections 2 to 5 for ${guide}:
 - Make the voice with voice "${VOICES[app.voice] ?? 'am_michael'}".

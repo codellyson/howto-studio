@@ -45,3 +45,13 @@ test('a server that fails to start says why', async () => {
   mkdirSync(appDir(app.slug), { recursive: true })
   await assert.rejects(ensureLocal(app, () => {}), /It said: "ERROR Another dev server is already running"/)
 })
+
+test('an app that starts on another port is followed to the address it printed', async () => {
+  const repo = mkdtempSync(join(tmpdir(), 'repo-'))
+  const app = { slug: 'local-moved', name: 'T', repo, site: 'http://localhost:47994', voice: 'Michael', fakeSaves: true, mode: 'local' as const, start: 'echo "Local: http://127.0.0.1:47993/"; exec python3 -m http.server 47993 --bind 127.0.0.1' }
+  mkdirSync(appDir(app.slug), { recursive: true })
+  writeFileSync(join(appDir(app.slug), 'app.json'), JSON.stringify(app))
+  await ensureLocal(app, () => {})
+  assert.equal(app.site, 'http://localhost:47993')
+  releaseLocal(app.slug)
+})

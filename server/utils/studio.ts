@@ -248,7 +248,7 @@ const BASH = ['node', 'python3', 'pnpm', 'npx', 'ffmpeg', 'ffprobe', 'curl', 'ls
 const TOOLS = ['Read', 'Glob', 'Grep', 'Write', 'Edit', ...BASH.map(c => `Bash(${c}:*)`), 'Bash(GUIDE_PROFILE=:*)', 'Bash(for :*)', 'Bash(cd :*)']
 
 // Runs a headless Claude Code session and turns its tool calls into plain progress lines.
-export function runClaude(k: string, kind: Job['kind'], prompt: string, opts: { cwd: string, env?: Record<string, string>, schema?: object, readOnly?: boolean, onDone?: (out: any) => void, before?: (say: (t: string) => void) => Promise<void>, after?: () => void }) {
+export function runClaude(k: string, kind: Job['kind'], prompt: string | (() => string), opts: { cwd: string, env?: Record<string, string>, schema?: object, readOnly?: boolean, onDone?: (out: any) => void, before?: (say: (t: string) => void) => Promise<void>, after?: () => void }) {
   if (busy(k)) throw createError({ statusCode: 409, statusMessage: 'This is already running.' })
   const job: Job = { kind, state: 'working', steps: [], started: Date.now() }
   jobs.set(k, job)
@@ -310,7 +310,8 @@ export function runClaude(k: string, kind: Job['kind'], prompt: string, opts: { 
       jobs.save(k, job)
       opts.after?.()
     })
-    child.stdin.end(prompt)
+    // Built after `before`, which may change the app's address.
+    child.stdin.end(typeof prompt === 'function' ? prompt() : prompt)
   }
 }
 
