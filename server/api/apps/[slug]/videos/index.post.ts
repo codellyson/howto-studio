@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 export default defineEventHandler(async (event) => {
@@ -11,6 +11,8 @@ export default defineEventHandler(async (event) => {
   let guide = base
   for (let i = 2; existsSync(join(appDir(app.slug), 'scripts', guide)); i++) guide = `${base}-${i}`
   mkdirSync(join(appDir(app.slug), 'scripts', guide), { recursive: true })
+  // Kept so a failed script can be written again from the same request.
+  writeFileSync(join(appDir(app.slug), 'scripts', guide, 'task.txt'), task)
   startScript(app, guide, task)
   return { guide }
 })

@@ -19,6 +19,7 @@ export type Video = {
   recorded: { duration: number, lines: { id: string, t: number, len: number }[] } | null
   status: string
   notes: string
+  task: string
   job: { kind: string, state: string, steps: string[], error?: string } | null
   overlay?: Overlay
 }

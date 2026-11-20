@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PhChatCircle, PhCircleNotch, PhPlay } from '@phosphor-icons/vue'
+import { PhArrowClockwise, PhChatCircle, PhCircleNotch, PhPlay } from '@phosphor-icons/vue'
 import type { Pin } from '~/components/PinsEditor.vue'
 
 const { slug, guide, base, data: video, error, load, frame, lengths, oneWayLines } = useVideo()
@@ -57,6 +57,17 @@ async function saveLine(id: string, voice: string) {
   try {
     const r = await $fetch<{ lines: Line[] }>(`${base}/lines/${id}`, { method: 'PATCH', body: { voice } })
     if (video.value) video.value.lines = r.lines
+    load()
+  } catch (e) { problem.value = errorText(e) }
+}
+
+// A script run that failed can be started again, from the saved request or an edited one.
+const retryTask = ref('')
+watch(video, (v) => { if (v && !retryTask.value) retryTask.value = v.task }, { immediate: true })
+async function retry() {
+  problem.value = ''
+  try {
+    await $fetch(`${base}/retry`, { method: 'POST', body: { task: retryTask.value } })
     load()
   } catch (e) { problem.value = errorText(e) }
 }
@@ -127,6 +138,11 @@ const shotMeta = computed(() => {
         <div v-if="video && !video.lines.length" class="flex flex-col gap-2 p-4" aria-live="polite">
           <p class="m-0 flex items-center gap-2 font-medium"><PhCircleNotch v-if="working" :size="16" class="spin" />{{ working ? 'Writing the script' : 'No script yet' }}</p>
           <p v-for="(s, i) in steps" :key="i" class="m-0" :class="i === steps.length - 1 ? 'text-ink' : 'text-muted'">{{ s }}</p>
+          <form v-if="!working && video.job?.state === 'error'" class="mt-4 flex flex-col gap-2" @submit.prevent="retry">
+            <label for="retry-task" class="font-medium">What the video should show</label>
+            <textarea id="retry-task" v-model="retryTask" rows="3" maxlength="500" required class="field h-auto resize-none py-2 leading-[1.4]" />
+            <button class="btn btn-primary self-start"><PhArrowClockwise :size="16" />Write the script again</button>
+          </form>
         </div>
         <template v-else-if="video && tab === 'script'">
           <p v-if="working" class="m-0 flex items-center gap-2 px-4 pt-4 text-muted" aria-live="polite"><PhCircleNotch :size="15" class="spin" />{{ steps.at(-1) ?? 'Working' }}</p>
