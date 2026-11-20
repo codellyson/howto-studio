@@ -32,6 +32,9 @@
     "icon": ["icons/icon.png", "icons/icon.icns"],
     "resources": {
       "engine/": "engine/"
+    },
+    "macOS": {
+      "signingIdentity": "-"
     }
   }
 }
