@@ -48,6 +48,19 @@ test('a job left running by an earlier studio ends when its process is gone', ()
   assert.equal(jobs.get('smalbum/other')!.state, 'working')
 })
 
+test('a job another studio already finished is not marked as interrupted', async () => {
+  const { spawn } = await import('node:child_process')
+  const child = spawn('sleep', ['0.3'])
+  const k = 'smalbum/shared'
+  const running = { kind: 'connect', state: 'working', steps: [], started: 1, pid: child.pid, detached: true }
+  writeFileSync(join(HOME, '.jobs', 'smalbum__shared.json'), JSON.stringify(running))
+  assert.equal(jobs.get(k)!.state, 'working')
+  // The other studio sees the run end and writes that down; then this one notices the process is gone.
+  writeFileSync(join(HOME, '.jobs', 'smalbum__shared.json'), JSON.stringify({ ...running, state: 'done' }))
+  await new Promise(r => child.on('exit', r))
+  assert.equal(jobs.get(k)!.state, 'done')
+})
+
 test('slugs are safe folder names', () => {
   assert.equal(slugify('  How a client approves!! '), 'how-a-client-approves')
   assert.equal(slugify('***'), 'item')

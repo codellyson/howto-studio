@@ -219,8 +219,16 @@ export const jobs = {
     }
     // A job whose process outlived an earlier studio: it ends when its process does.
     if (job?.state === 'working' && job.detached && !alive(job.pid)) {
+      // Another studio (the Mac app and a dev server share this folder) may already have recorded how it ended.
+      try {
+        const disk = JSON.parse(readFileSync(jobFile(k), 'utf8')) as Job
+        if (disk.state !== 'working') { memory.set(k, disk); return disk }
+      } catch {}
       const [slug, guide] = k.split('/') as [string, string]
-      const made = job.kind === 'record' || job.kind === 'render' ? !!readRecorded(slug, guide) : job.kind === 'script' ? readScript(slug, guide).lines.length > 0 : false
+      const made = job.kind === 'record' || job.kind === 'render' ? !!readRecorded(slug, guide)
+        : job.kind === 'script' ? readScript(slug, guide).lines.length > 0
+          : job.kind === 'connect' ? existsSync(configFile(slug)) && !!readApp(slug).summary && statSync(configFile(slug)).mtimeMs >= job.started
+            : false
       Object.assign(job, made ? { state: 'done' } : { state: 'error', error: 'The studio restarted while this was running. Try again.' })
       jobs.save(k, job)
     }
