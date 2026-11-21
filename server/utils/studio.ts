@@ -117,6 +117,15 @@ export function videoStatus(slug: string, guide: string) {
   return statSync(script).mtimeMs > statSync(v).mtimeMs ? 'changed' : 'done'
 }
 
+// A new, empty video folder named after its first few words.
+export function newGuide(slug: string, name: string) {
+  const base = slugify(name.split(/\s+/).slice(0, 6).join(' ')) || 'video'
+  let guide = base
+  for (let i = 2; existsSync(join(appDir(slug), 'scripts', guide)); i++) guide = `${base}-${i}`
+  mkdirSync(join(appDir(slug), 'scripts', guide), { recursive: true })
+  return guide
+}
+
 export function listVideos(slug: string) {
   const dir = join(appDir(slug), 'scripts')
   if (!existsSync(dir)) return []

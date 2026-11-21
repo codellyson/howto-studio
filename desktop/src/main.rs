@@ -7,7 +7,9 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use tauri::{Manager, RunEvent};
+use tauri::{AppHandle, Manager, RunEvent};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+use tauri_plugin_updater::UpdaterExt;
 
 const PORT: u16 = 4700;
 
@@ -57,14 +59,42 @@ fn watch_engine(slot: Arc<Mutex<Option<Child>>>, server: String) {
     });
 }
 
+fn stop_engine(app: &AppHandle) {
+    if let Some(mut child) = app.state::<Engine>().0.lock().unwrap().take() {
+        let _ = child.kill();
+    }
+}
+
+// On launch, look for a newer release on GitHub. If there is one, ask before installing; never update silently.
+// Any failure (offline, no release yet) just leaves the current version running.
+fn check_for_update(app: AppHandle) {
+    thread::spawn(move || tauri::async_runtime::block_on(async move {
+        let Ok(updater) = app.updater() else { return };
+        let Ok(Some(update)) = updater.check().await else { return };
+        let yes = app.dialog()
+            .message(format!("How-to Studio {} is ready. Install it now? The app restarts when it is done, and any video being made stops.", update.version))
+            .title("Update available")
+            .buttons(MessageDialogButtons::OkCancelCustom("Install and restart".into(), "Later".into()))
+            .blocking_show();
+        if !yes { return }
+        match update.download_and_install(|_, _| {}, || {}).await {
+            Ok(()) => { stop_engine(&app); app.restart() }
+            Err(e) => { app.dialog().message(format!("The update did not install: {e}")).title("Update failed").blocking_show(); }
+        }
+    }));
+}
+
 fn main() {
     let slot = Arc::new(Mutex::new(None));
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Engine(slot.clone()))
         .invoke_handler(tauri::generate_handler![engine_status])
         .setup(move |app| {
             let server = app.path().resource_dir()?.join("engine/.output/server/index.mjs");
             watch_engine(slot.clone(), server.to_string_lossy().into_owned());
+            check_for_update(app.handle().clone());
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -72,9 +102,7 @@ fn main() {
 
     app.run(|handle, event| {
         if let RunEvent::Exit = event {
-            if let Some(mut child) = handle.state::<Engine>().0.lock().unwrap().take() {
-                let _ = child.kill();
-            }
+            stop_engine(handle);
         }
     });
 }
