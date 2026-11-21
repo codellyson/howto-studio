@@ -2,6 +2,9 @@
 # Drops off-camera stretches, runs the checks, has dress.cjs draw captions, cursor and pinned marks, mixes in the voice,
 # and writes final/<guide>.mp4 plus out/<guide>-sheet.png. --redress skips the cut and only draws and mixes again,
 # for a new look.json or pins.json.
+# A take filmed with record.cjs --from is spliced onto the clean video already made, at the start of that line.
+# A take that failed keeps the lines before the failure (out/<guide>.silent.mp4 marked partial), so the next take
+# can start from the line that broke.
 import json, os, shutil, subprocess, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from deflash import deflash
@@ -74,14 +77,21 @@ def to_video(wall, events, marks):
 def overlay_plan(timing, marks, keep, said, voice, video_len):
     """Cursor moves and clicked elements in final-video time, for dress.cjs.
     Anything inside a cut moves to where the video picks up again, so the cursor keeps its last place."""
-    def place(wall):
+    def place(wall, moved=None):
         t = to_video(wall, timing['events'], marks)
         later = [a for a, b in keep if a > t]
         try:
             return round(shift(t, keep), 3)
         except ValueError:
+            if moved is not None:
+                moved.append(True)
             return round(shift(later[0], keep), 3) if later else None
-    cursor = [{'t': t, 'k': c['k'], 'x': c['x'], 'y': c['y']} for c in timing.get('cursor', []) if (t := place(c['wall'])) is not None]
+    cursor = []
+    for c in timing.get('cursor', []):
+        off = []
+        if (t := place(c['wall'], off)) is not None:
+            # A click made off camera must not ripple where the video picks up again.
+            cursor.append({'t': t, 'k': 'move' if off and c['k'] in ('down', 'up') else c['k'], 'x': c['x'], 'y': c['y']})
     targets = [{'line': x['line'], 't': t, 'name': x['name'], 'box': x['box']} for x in timing.get('targets', []) if x['line'] and (t := place(x['wall'])) is not None]
     says = [e for e in timing['events'] if e['kind'] == 'say' and e.get('url')]
     return {'address': says[0]['url'] if says else '', 'size': timing.get('size', [1440, 900]), 'scale': timing.get('scale', 1), 'duration': round(video_len, 3), 'lines': [{**s, 'len': voice[s['id']]} for s in said], 'cursor': cursor, 'targets': targets}
@@ -116,9 +126,24 @@ def main(project, g, flash, redress=False):
     plan_file = os.path.join(out, g + '.overlay.json')
     if redress:
         assert os.path.exists(plan_file) and os.path.exists(silent), 'this video was filmed before looks could change; record it again'
+        assert not json.load(open(plan_file)).get('partial'), 'this video is not finished; film the rest first'
         said = [{'id': l['id'], 't': l['t']} for l in json.load(open(plan_file))['lines']]
     else:
-        said = cut(project, g, flash, voice, silent, plan_file)
+        start = json.load(open(os.path.join(out, 'raw', g + '.timing.json'))).get('from')
+        if start:
+            assert os.path.exists(plan_file) and os.path.exists(silent), f'--from {start} needs a video to continue; film every line'
+            old_plan = json.load(open(plan_file))
+            old_silent = os.path.join(out, g + '.before.silent.mp4')
+            shutil.copyfile(silent, old_silent)
+            new_silent, new_plan_file = os.path.join(out, g + '.part.silent.mp4'), os.path.join(out, g + '.part.overlay.json')
+            cut(project, g, flash, voice, new_silent, new_plan_file)
+            said = splice(out, g, start, old_silent, old_plan, new_silent, json.load(open(new_plan_file)), silent, plan_file, voice)
+        else:
+            said = cut(project, g, flash, voice, silent, plan_file)
+        partial = json.load(open(plan_file)).get('partial')
+        if partial:
+            print(f'PARTIAL: kept {len(said)} lines. Film the rest with: node record.cjs <project> {g} --from {partial}')
+            sys.exit(2)
     subprocess.check_call(['node', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dress.cjs'), project, g])
     dressed = os.path.join(out, g + '.dressed.mp4')
     final = os.path.join(final_dir, g + '.mp4')
@@ -144,15 +169,30 @@ def cut(project, g, flash, voice, silent, plan_file):
     assert not timing['blocked'], f"take tried to write to protected data: {timing['blocked']}"
     events = timing['events']
     marks = read_marks(src, len(events))
-    timed = [{'id': e['id'], 't': t} for e, t in zip(events, marks) if e['kind'] == 'say']
-    assert {s['id'] for s in timed} == set(voice), 'this take did not say every line'
+    failed = timing.get('failed')
+    # A failed take ends where the failed line began; that line and the rest are filmed again.
+    end = marks[-1] - 0.05
+    timed = []
+    for e, t in zip(events, marks):
+        if e['kind'] != 'say':
+            continue
+        if e['id'] == failed:
+            end = t - 0.05
+            break
+        timed.append({'id': e['id'], 't': t})
+    assert timed, f"nothing usable was filmed before {failed}"
+    order = list(voice)
+    first = order.index(timing['from']) if timing.get('from') else 0
+    ids = [s['id'] for s in timed]
+    assert ids == order[first:first + len(ids)], f'lines out of order: {ids}'
+    assert failed or len(ids) == len(order) - first, 'this take did not say every line'
     cuts, opened = [[0.0, timed[0]['t']]], None
     for e, t in zip(events, marks):
         if e['kind'] == 'cut-start':
             opened = t
-        elif e['kind'] == 'cut-end':
-            cuts.append([opened, t])
-    keep = keep_ranges(cuts, marks[-1] - 0.05)
+        elif e['kind'] == 'cut-end' and opened is not None and opened < end:
+            cuts.append([opened, min(t, end)])
+    keep = keep_ranges(cuts, end)
     cut = os.path.join(out, g + '.cut.mp4')
     expr = '+'.join(f'between(t,{a:.2f},{b:.2f})' for a, b in keep)
     # The patch beside the mark covers it, so no box shows on any background colour.
@@ -168,7 +208,32 @@ def cut(project, g, flash, voice, silent, plan_file):
     else:
         shutil.copyfile(cut, silent)
     check(said, voice, duration(silent))
-    json.dump(overlay_plan(timing, marks, keep, said, voice, duration(silent)), open(plan_file, 'w'))
+    plan = overlay_plan(timing, marks, keep, said, voice, duration(silent))
+    if failed:
+        plan['partial'] = failed
+    json.dump(plan, open(plan_file, 'w'))
+    return said
+
+
+def splice(out, g, start, old_silent, old_plan, new_silent, new_plan, silent, plan_file, voice):
+    """The old clean video up to where `start` begins, then the new take. Lines, cursor and clicks merge the same way."""
+    assert old_plan['size'] == new_plan['size'] and old_plan.get('scale', 1) == new_plan.get('scale', 1), 'the old video was filmed at another size; film every line again'
+    old_ids = [l['id'] for l in old_plan['lines']]
+    at = old_ids.index(start) if start in old_ids else len(old_ids)
+    cut_at = old_plan['lines'][at]['t'] if at < len(old_ids) else old_plan['duration']
+    graph = f'[0:v]trim=0:{cut_at:.3f},setpts=PTS-STARTPTS[a];[1:v]setpts=PTS-STARTPTS[b];[a][b]concat=n=2:v=1[v]'
+    subprocess.check_call(['ffmpeg', '-loglevel', 'error', '-y', '-i', old_silent, '-i', new_silent, '-filter_complex', graph, '-map', '[v]', '-an', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '20', silent])
+    moved = lambda items: [{**x, 't': round(x['t'] + cut_at, 3)} for x in items]
+    plan = {**old_plan, 'duration': round(duration(silent), 3),
+            'lines': old_plan['lines'][:at] + moved(new_plan['lines']),
+            'cursor': [c for c in old_plan['cursor'] if c['t'] < cut_at] + moved(new_plan['cursor']),
+            'targets': [x for x in old_plan['targets'] if x['t'] < cut_at] + moved(new_plan['targets'])}
+    plan.pop('partial', None)
+    if new_plan.get('partial'):
+        plan['partial'] = new_plan['partial']
+    said = [{'id': l['id'], 't': l['t']} for l in plan['lines']]
+    check(said, voice, plan['duration'])
+    json.dump(plan, open(plan_file, 'w'))
     return said
 
 

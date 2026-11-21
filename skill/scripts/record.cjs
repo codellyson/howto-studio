@@ -1,4 +1,6 @@
-// GUIDE_PROFILE=<dir> node record.cjs <project> <guide>
+// GUIDE_PROFILE=<dir> node record.cjs <project> <guide> [--from Lnn]
+// --from films from that line on: earlier lines run off camera, without their voice holds, so the app reaches the
+// same state, and cut.py --from splices the new part onto the video already made.
 // Runs guides[<guide>] from <project>/takes.cjs. See references/takes-template.cjs for the helpers it receives.
 // Each script line holds for its audio length, so the screen follows the voice. Captions and cursor are added by dress.cjs.
 // Writes out/raw/<guide>.webm and out/raw/<guide>.timing.json for cut.py.
@@ -10,6 +12,8 @@ const { playwright, profileDir } = require('./lib.cjs');
 
 const project = path.resolve(process.argv[2]);
 const guide = process.argv[3];
+const fromArg = process.argv.indexOf('--from');
+const from = fromArg > 0 ? process.argv[fromArg + 1] : null;
 const profile = profileDir();
 const config = require(path.join(project, 'takes.cjs'));
 // A smaller page filmed at high DPI: the app's text comes out larger and sharp. The video is S times the page.
@@ -125,8 +129,15 @@ const decorate = (css) => {
     await sleep(120);
   };
 
+  let forwarding = !!from;
   const say = async (id, act) => {
     if (!lines[id] || !durations[id]) throw new Error(`no script line or audio for ${id}`);
+    if (forwarding && id !== from) {
+      current = null;
+      if (act) await act();
+      return;
+    }
+    forwarding = false;
     current = id;
     await mark('say', id);
     const voice = sleep(durations[id] * 1000 + GAP);
@@ -202,11 +213,14 @@ const decorate = (css) => {
   };
 
   if (!config.guides[guide]) throw new Error(`guide? ${Object.keys(config.guides).join(', ')}`);
+  if (from && !lines[from]) throw new Error(`--from ${from}: no such line`);
+  let failed = null;
   const video = p.video();
   try {
     await config.guides[guide](t);
     await sleep(1000);
-    const missing = Object.keys(lines).filter((id) => !events.some((e) => e.id === id));
+    const ids = Object.keys(lines);
+    const missing = ids.slice(from ? ids.indexOf(from) : 0).filter((id) => !events.some((e) => e.id === id));
     if (missing.length) throw new Error(`lines never said: ${missing}`);
     current = null;
     await sleep(400);
@@ -215,13 +229,16 @@ const decorate = (css) => {
   } catch (e) {
     await p.screenshot({ path: path.join(out, `${guide}-error.png`) }).catch(() => {});
     console.error('FAILED', e.message);
+    // The lines before this one are good: cut.py keeps them, and the next take starts here.
+    failed = current || from || Object.keys(lines)[0];
+    console.error(`RESUME with: python3 cut.py <project> ${guide}, then node record.cjs <project> ${guide} --from ${failed}`);
     process.exitCode = 1;
   }
   // Past the end mark, so cut.py drops it. It runs after a failed take too, so test records never stay behind.
   if (t.cleanup) await t.cleanup().catch((e) => { console.error('CLEANUP FAILED', e.message); process.exitCode = 1; });
   await ctx.close();
   fs.renameSync(await video.path(), path.join(raw, `${guide}.webm`));
-  fs.writeFileSync(path.join(raw, `${guide}.timing.json`), JSON.stringify({ size: [W, H], scale: S, events, cursor, targets, writes: [...writes], blocked: [...blocked] }, null, 1));
+  fs.writeFileSync(path.join(raw, `${guide}.timing.json`), JSON.stringify({ size: [W, H], scale: S, from, failed, events, cursor, targets, writes: [...writes], blocked: [...blocked] }, null, 1));
   console.log('VIDEO', path.join(raw, `${guide}.webm`), 'events', events.length);
   console.log('WRITES', [...writes].join('\n  '));
   console.log('BLOCKED', [...blocked].join('\n  '));

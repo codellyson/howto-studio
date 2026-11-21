@@ -190,15 +190,23 @@ Things that have gone wrong before:
 
 ## 5. Record and cut
 
-Takes fail for ordinary reasons such as timeouts, so retry up to three times per guide. Run long batches in the background.
+Film, then cut. Run long batches in the background.
 
 ```bash
-for i in 1 2 3; do GUIDE_PROFILE=$GUIDE_PROFILE node $SKILL/scripts/record.cjs <project> <guide> && break; done
+GUIDE_PROFILE=$GUIDE_PROFILE node $SKILL/scripts/record.cjs <project> <guide>
 ```
 
 ```bash
 python3 $SKILL/scripts/cut.py <project> <guide>
 ```
+
+Takes fail for ordinary reasons such as timeouts. A failed take is not thrown away: `record.cjs` prints `RESUME` with the line that broke. Run `cut.py` anyway; it keeps the lines before the failure and exits with code 2. Then film the rest from that line, and cut again, which splices it on. Try up to three times.
+
+```bash
+GUIDE_PROFILE=$GUIDE_PROFILE node $SKILL/scripts/record.cjs <project> <guide> --from L06
+```
+
+**Changing part of a video.** After a script edit, run `voice.py` again (it only remakes lines whose words changed), then film from the first changed line with `--from` and run `cut.py`. The lines before it stay as they were filmed. `--from` replays the earlier lines off camera to reach the same state, so the take function must still run every line in order. When the change is in an earlier line's actions, not just its words, film from that line instead.
 
 A failed take leaves `out/<guide>-error.png`. Look at it before you retry something that fails the same way twice.
 

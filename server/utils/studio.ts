@@ -145,6 +145,13 @@ const planFile = (slug: string, guide: string) => join(appDir(slug), 'out', `${g
 export type Plan = { size: [number, number], duration: number, lines: { id: string, t: number, len: number }[], cursor: { t: number, k: string, x: number, y: number }[], targets: { line: string, t: number, name: string, box: { x: number, y: number, w: number, h: number } }[] }
 
 // Videos filmed before looks could change have no clean take, so they can't be re-styled.
+// The first line whose words differ from the voice that was made for the last filming, so only the rest is filmed again.
+export function firstChanged(slug: string, guide: string, lines: Line[]): string | null {
+  let made: Record<string, [string, string]>
+  try { made = JSON.parse(readFileSync(join(appDir(slug), 'audio', guide, 'made.json'), 'utf8')) } catch { return null }
+  return lines.find(l => made[l.id]?.[1] !== l.voice)?.id ?? null
+}
+
 export function readPlan(slug: string, guide: string): Plan | null {
   const f = planFile(slug, guide)
   return existsSync(f) && existsSync(cleanFile(slug, guide)) ? JSON.parse(readFileSync(f, 'utf8')) : null

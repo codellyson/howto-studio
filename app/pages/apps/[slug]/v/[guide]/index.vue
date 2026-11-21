@@ -105,11 +105,11 @@ async function sendAsk() {
   } catch (e) { problem.value = errorText(e) }
 }
 
-async function record() {
+async function record(from?: string) {
   confirmRecord.value = false
   problem.value = ''
   try {
-    await $fetch(`${base}/record`, { method: 'POST' })
+    await $fetch(`${base}/record`, { method: 'POST', body: from ? { from } : {} })
     await navigateTo(`/apps/${slug}/v/${guide}/record`)
   } catch (e) { problem.value = errorText(e) }
 }
@@ -142,7 +142,10 @@ const shotMeta = computed(() => {
       <span v-for="v in checks.video" :key="v" class="meta max-lg:hidden">{{ v }}</span>
       <button type="button" class="btn btn-secondary ml-auto h-7" @click="fixFlags">Fix them</button>
     </div>
-    <p v-else-if="video?.status === 'changed'" class="m-0 border-b border-line px-4 py-2 text-muted">The script changed after filming. Record again to update the video.</p>
+    <p v-else-if="video?.status === 'changed'" class="m-0 flex items-center gap-3 border-b border-line px-4 py-2 text-muted">
+      The script changed after filming.{{ video.firstChanged && view?.restyle ? ` Line ${video.firstChanged.replace(/^L/, '')} is the first change; the lines before it can stay.` : ' Record again to update the video.' }}
+      <button v-if="video.firstChanged && view?.restyle" type="button" class="btn btn-secondary ml-auto h-7" @click="record(video.firstChanged)">Film from line {{ video.firstChanged.replace(/^L/, '') }}</button>
+    </p>
     <div v-else-if="working && video?.job && video.lines.length" class="border-b border-line px-4 py-2"><JobProgress compact :job="video.job" /></div>
     <p v-else-if="view?.stale" class="m-0 flex items-center gap-3 border-b border-line px-4 py-2 text-muted">The look or marks changed. The video still has the old ones.<button type="button" class="btn btn-secondary h-7" @click="restyle">Make the video again</button></p>
 
@@ -179,6 +182,9 @@ const shotMeta = computed(() => {
         <template v-else-if="video && tab === 'script'">
           <ScriptLines :lines="video.lines" :selected="selected" :one-way="oneWayLines" :flags="checks?.lines" :editable="!working" @select="selected = $event" @save="saveLine">
             <template v-if="view?.restyle" #selected="{ id }">
+              <div v-if="id !== video.lines[0]?.id" class="ml-[46px] pr-[10px] pb-2">
+                <button type="button" class="btn btn-plain h-7 px-2 text-[13px]" :disabled="working" @click="record(id)"><span class="rec-dot" />Film again from here</button>
+              </div>
               <PinsEditor :line="id" :targets="view.lines[id]?.targets ?? []" :pins="view.pins" :disabled="working" @save="savePins" />
             </template>
           </ScriptLines>
@@ -202,7 +208,7 @@ const shotMeta = computed(() => {
 
     <ConfirmDialog
       :open="confirmRecord" title="Record this video again?" body="The current video is replaced when the new one is done."
-      action="Record again" @confirm="record" @cancel="confirmRecord = false"
+      action="Record again" @confirm="record()" @cancel="confirmRecord = false"
     />
   </div>
 </template>

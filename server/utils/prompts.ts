@@ -135,12 +135,13 @@ Keep the skill's table format. Afterwards run node ${SKILL}/scripts/check.cjs . 
   return runClaude(key(app.slug, guide), 'change', prompt, { cwd: appDir(app.slug), env: guideEnv(app), ...onThisMac(app) })
 }
 
-export function startRecord(app: AppConfig, guide: string) {
+export function startRecord(app: AppConfig, guide: string, from?: string) {
   const writes = app.fakeSaves
     ? `${app.mode === 'local' ? 'The app runs on this Mac, but its data may be shared' : 'The site is live'}: fake every write as the skill describes, block everything else to its host, and confirm the data is unchanged before and after.`
     : 'Writes may go through only if this is a test environment; register afterTake to undo each one. If it looks like production, fake them instead.'
+  const part = from ? `\nFilm only from line ${from} on. The lines before it are already filmed and stay as they are: make the voice (only changed lines are remade), update this video's take if the script's actions changed, then run record.cjs with --from ${from} and cut.py, as "Changing part of a video" in section 5 says. Do not film the whole video again.\n` : ''
   const prompt = () => `${shared(app, guide)}
-
+${part}
 Film this video now, following sections 2 to 5 for ${guide}:
 - Make the voice with voice "${VOICES[app.voice] ?? 'am_michael'}".
 - Write or update this video's function in takes.cjs, using the repository section and scripts/${guide}/notes.md.

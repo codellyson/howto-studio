@@ -13,6 +13,7 @@ export default defineEventHandler((event) => {
     title: title || guide,
     lines,
     checks: scriptChecks(app.slug, guide, lines),
+    firstChanged: firstChanged(app.slug, guide, lines),
     recorded: readRecorded(app.slug, guide),
     status: videoStatus(app.slug, guide),
     notes: existsSync(notesFile) ? readFileSync(notesFile, 'utf8') : '',
