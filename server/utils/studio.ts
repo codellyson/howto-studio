@@ -15,7 +15,7 @@ export type Summary = { framework: string, clientRendered: boolean, signIn: stri
 // mode 'local': the site is the app's dev server on this Mac, started with `start` in the repo when it isn't running.
 export type AppConfig = { slug: string, name: string, repo: string, site: string, voice: string, fakeSaves: boolean, mode?: 'live' | 'local', start?: string, summary?: Summary, signedIn?: boolean }
 export type Line = { id: string, screen: string, voice: string }
-export type Job = { kind: 'connect' | 'script' | 'change' | 'record' | 'signin' | 'render', state: 'working' | 'done' | 'error', steps: string[], error?: string, started: number, pid?: number, detached?: boolean }
+export type Job = { kind: 'connect' | 'plan' | 'script' | 'change' | 'record' | 'signin' | 'render', state: 'working' | 'done' | 'error', steps: string[], error?: string, started: number, pid?: number, detached?: boolean }
 
 export const appDir = (slug: string) => join(HOME, 'apps', slug)
 export const profileDir = (slug: string) => join(HOME, 'profiles', slug)
@@ -94,11 +94,24 @@ export function readRecorded(slug: string, guide: string): Recorded | null {
 
 export const videoFile = (slug: string, guide: string) => join(appDir(slug), 'final', `${guide}.mp4`)
 
+// The outlines offered for a new video, and the one the person picked.
+export type Angle = { title: string, who: string, after: string, steps: string[] }
+export type Outline = { task: string, clear: boolean, angles: Angle[], chosen: Angle | null }
+const outlineFile = (slug: string, guide: string) => join(appDir(slug), 'scripts', guide, 'outline.json')
+export function readOutline(slug: string, guide: string): Outline | null {
+  try { return JSON.parse(readFileSync(outlineFile(slug, guide), 'utf8')) } catch { return null }
+}
+export const writeOutline = (slug: string, guide: string, o: Outline) => writeFileSync(outlineFile(slug, guide), JSON.stringify(o, null, 2) + '\n')
+
 export function videoStatus(slug: string, guide: string) {
   const job = jobs.get(key(slug, guide))
-  if (job?.state === 'working') return job.kind === 'record' ? 'recording' : job.kind === 'render' ? 'rendering' : 'writing'
+  if (job?.state === 'working') return job.kind === 'record' ? 'recording' : job.kind === 'render' ? 'rendering' : job.kind === 'plan' ? 'planning' : 'writing'
   const script = scriptFile(slug, guide)
-  if (!existsSync(script)) return job?.state === 'error' ? 'failed' : 'writing'
+  if (!existsSync(script)) {
+    if (job?.state === 'error') return 'failed'
+    const o = readOutline(slug, guide)
+    return o && !o.chosen ? 'outline' : 'writing'
+  }
   const v = videoFile(slug, guide)
   if (!existsSync(v)) return 'draft'
   return statSync(script).mtimeMs > statSync(v).mtimeMs ? 'changed' : 'done'
@@ -136,17 +149,17 @@ export function overlayView(slug: string, guide: string) {
   const pins = overlay.readPins(project, guide)
   if (!plan) return { restyle: false, look, scope, choices: overlay.CHOICES, backgrounds: overlay.BACKGROUNDS, pins, css: '', size: null, lines: {} }
   const captions = Object.fromEntries(readScript(slug, guide).lines.map(l => [l.id, l.voice]))
-  const zooms = overlay.zoomWindows(look, plan.lines, plan.targets)
+  const zooms = overlay.zoomWindows(look, plan.lines, plan.targets, plan.size)
   const address = (plan as any).address || readApp(slug).site
   const lines: Record<string, { html: string, targets: string[] }> = {}
-  for (const l of plan.lines) {
+  for (const [n, l] of plan.lines.entries()) {
     const targets = plan.targets.filter(t => t.line === l.id)
     const at = frameAt(l, plan.duration)
     const last = plan.cursor.filter(c => c.t <= at).at(-1)
     lines[l.id] = {
       // The same frame, marks, cursor, zoom and caption the video gets at this still's moment.
       html: overlay.previewHtml({
-        look, size: plan.size, address, caption: captions[l.id], targets,
+        look, size: plan.size, address, caption: captions[l.id], step: { n: n + 1, of: plan.lines.length }, targets,
         src: `/api/apps/${slug}/videos/${guide}/frame/${l.id}.jpg?v=${plan.duration}`,
         pins: pins.filter((p: any) => p.line === l.id),
         cursor: last && last.k !== 'hide' ? { x: last.x, y: last.y } : null,
@@ -227,6 +240,7 @@ export const jobs = {
       const [slug, guide] = k.split('/') as [string, string]
       const made = job.kind === 'record' || job.kind === 'render' ? !!readRecorded(slug, guide)
         : job.kind === 'script' ? readScript(slug, guide).lines.length > 0
+          : job.kind === 'plan' ? !!readOutline(slug, guide)
           : job.kind === 'connect' ? existsSync(configFile(slug)) && !!readApp(slug).summary && statSync(configFile(slug)).mtimeMs >= job.started
             : false
       Object.assign(job, made ? { state: 'done' } : { state: 'error', error: 'The studio restarted while this was running. Try again.' })

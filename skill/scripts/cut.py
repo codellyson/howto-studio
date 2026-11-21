@@ -84,7 +84,7 @@ def overlay_plan(timing, marks, keep, said, voice, video_len):
     cursor = [{'t': t, 'k': c['k'], 'x': c['x'], 'y': c['y']} for c in timing.get('cursor', []) if (t := place(c['wall'])) is not None]
     targets = [{'line': x['line'], 't': t, 'name': x['name'], 'box': x['box']} for x in timing.get('targets', []) if x['line'] and (t := place(x['wall'])) is not None]
     says = [e for e in timing['events'] if e['kind'] == 'say' and e.get('url')]
-    return {'address': says[0]['url'] if says else '', 'size': timing.get('size', [1440, 900]), 'duration': round(video_len, 3), 'lines': [{**s, 'len': voice[s['id']]} for s in said], 'cursor': cursor, 'targets': targets}
+    return {'address': says[0]['url'] if says else '', 'size': timing.get('size', [1440, 900]), 'scale': timing.get('scale', 1), 'duration': round(video_len, 3), 'lines': [{**s, 'len': voice[s['id']]} for s in said], 'cursor': cursor, 'targets': targets}
 
 
 def sheet(video, said, voice, dst):

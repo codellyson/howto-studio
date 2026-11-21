@@ -5,7 +5,7 @@ type Video = { guide: string, title: string, status: string, duration: number | 
 type App = { slug: string, name: string, summary?: object, videos: Video[], job: { state: string } | null }
 
 const slug = String(useRoute().params.slug)
-const { data: app, error } = usePoll<App>(() => `/api/apps/${slug}`, a => !!a && (a.job?.state === 'working' || a.videos.some(v => v.status === 'writing' || v.status === 'recording' || v.status === 'rendering')), 2000)
+const { data: app, error } = usePoll<App>(() => `/api/apps/${slug}`, a => !!a && (a.job?.state === 'working' || a.videos.some(v => v.status === 'writing' || v.status === 'planning' || v.status === 'recording' || v.status === 'rendering')), 2000)
 const task = ref('')
 const sending = ref(false)
 const problem = ref('')
@@ -19,7 +19,7 @@ async function start() {
   } catch (e) { problem.value = errorText(e) } finally { sending.value = false }
 }
 
-const LABEL: Record<string, string> = { done: 'Up to date', changed: 'Script changed', draft: 'Not filmed yet', writing: 'Writing the script', recording: 'Recording', rendering: 'Making it again', failed: 'Could not write the script' }
+const LABEL: Record<string, string> = { done: 'Up to date', changed: 'Script changed', draft: 'Not filmed yet', planning: 'Drafting outlines', outline: 'Pick an outline', writing: 'Writing the script', recording: 'Recording', rendering: 'Making it again', failed: 'Could not write the script' }
 const link = (v: Video) => v.status === 'done' ? `/apps/${slug}/v/${v.guide}/review` : v.status === 'recording' ? `/apps/${slug}/v/${v.guide}/record` : `/apps/${slug}/v/${v.guide}`
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 </script>
@@ -56,8 +56,8 @@ const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).
             <span class="min-w-0 flex-1 truncate font-medium">{{ v.title }}</span>
             <span class="meta inline-flex flex-none items-center gap-1.5 whitespace-nowrap" :class="{ 'text-rec': v.status === 'failed' }" :aria-label="LABEL[v.status]">
               <PhCheck v-if="v.status === 'done'" :size="15" />
-              <PhClock v-else-if="v.status === 'changed'" :size="15" />
-              <PhCircleNotch v-else-if="v.status === 'writing' || v.status === 'rendering'" :size="15" class="spin" />
+              <PhClock v-else-if="v.status === 'changed' || v.status === 'outline'" :size="15" />
+              <PhCircleNotch v-else-if="v.status === 'writing' || v.status === 'planning' || v.status === 'rendering'" :size="15" class="spin" />
               <span v-else-if="v.status === 'recording'" class="rec-dot pulse" />
               <PhWarningCircle v-else-if="v.status === 'failed'" :size="15" />
               {{ v.status === 'done' && v.duration ? mmss(v.duration) : LABEL[v.status] }}

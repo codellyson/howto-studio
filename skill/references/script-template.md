@@ -12,7 +12,7 @@
 
 ## Script
 
-About <N> seconds of voice. Film at 1440x900, with a visible cursor.
+About <N> seconds of voice. Filmed at 1280x800, sharp (high DPI); cursor and captions are added after.
 
 | Shot | On screen | Voiceover |
 |---|---|---|

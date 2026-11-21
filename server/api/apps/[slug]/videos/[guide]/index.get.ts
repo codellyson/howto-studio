@@ -16,6 +16,7 @@ export default defineEventHandler((event) => {
     status: videoStatus(app.slug, guide),
     notes: existsSync(notesFile) ? readFileSync(notesFile, 'utf8') : '',
     // Videos made before requests were saved start from their name.
+    outline: readOutline(app.slug, guide),
     task: existsSync(taskFile) ? readFileSync(taskFile, 'utf8') : guide.replace(/-/g, ' '),
     oneWay: (app.summary?.saves ?? []).filter(s => s.oneWay),
     overlay: overlayView(app.slug, guide),

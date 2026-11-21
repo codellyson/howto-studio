@@ -66,6 +66,48 @@ const shared = (app: AppConfig, guide: string) => `You make how-to videos with t
 - Nobody can answer questions during this run. Decide sensibly, and write anything the person should know to scripts/${guide}/notes.md.
 - Your final message is shown to the person. Make it one or two plain sentences about the video, with no "I" or "we": if the work could not finish, say where it stopped and why (for example "Filming stopped at line 6. The Approve album button never appeared."). No praise, no exclamation marks.`
 
+const OUTLINE_SCHEMA = {
+  type: 'object',
+  required: ['clear', 'angles'],
+  properties: {
+    clear: { type: 'boolean' },
+    angles: { type: 'array', minItems: 1, maxItems: 3, items: { type: 'object', required: ['title', 'who', 'after', 'steps'], properties: { title: { type: 'string' }, who: { type: 'string' }, after: { type: 'string' }, steps: { type: 'array', minItems: 3, maxItems: 12, items: { type: 'string' } } } } },
+  },
+}
+
+// Before a script: turn the request into one outline, or two or three when it is vague, for the person to pick.
+// Reading only, so it is quick and needs no running app.
+export function startOutline(app: AppConfig, guide: string, task: string) {
+  const s = app.summary
+  const prompt = `Someone wants a short narrated how-to video of ${app.name}, the web app in this repository. Their request: "${task}"
+${s ? `Pages: ${s.pages.join(', ')}. Sign-in: ${s.signIn}.` : ''}
+Read the code (do not run anything) and plan the video. A video shows one task, 30 to 60 seconds, for someone who is not technical.
+- clear: true when the request names one task and who it is for. Then return exactly one angle.
+- Otherwise clear is false: the request is a tour, a feature list or a vague goal. Return two or three different videos it could be, each one task, most useful first. One of them may be a short tour if that fits.
+Each angle:
+- title: the video's name, in a few words, starting with a verb where it can ("File your first request").
+- who: who watches, in a few words ("a new team member").
+- after: what they can do after watching, in one short sentence.
+- steps: what happens on screen, one short line each, 4 to 10 lines, in the app's own words. The first step already does something; never open on a page where nothing happens. Every step that says "click X" really clicks X. When the video switches to another person's view, that step says whose view it is and how it looks different. The last step shows the result from the other side (what the customer, recipient or teammate sees).`
+  return runClaude(key(app.slug, guide), 'plan', prompt, {
+    cwd: app.repo, schema: OUTLINE_SCHEMA, readOnly: true,
+    onDone: (out) => {
+      const angles = (Array.isArray(out?.angles) ? out.angles : []).filter((a: any) => a?.title && Array.isArray(a.steps) && a.steps.length)
+      if (!angles.length) throw new Error('No outline was written')
+      writeOutline(app.slug, guide, { task, clear: !!out.clear, angles: angles.slice(0, 3), chosen: null })
+    },
+  })
+}
+
+// The approved outline, as the request the script is written from.
+export function outlineTask(o: Outline) {
+  const a = o.chosen!
+  return `${a.title}
+Who watches: ${a.who}. After watching, they can ${a.after.replace(/^./, c => c.toLowerCase())}
+Approved outline. Follow it in order; each step becomes one or more script lines:
+${a.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}`
+}
+
 export function startScript(app: AppConfig, guide: string, task: string) {
   const prompt = () => `${shared(app, guide)}
 
@@ -73,7 +115,7 @@ Task for this video: ${task}
 
 Do these parts only:
 1. The "Write the takes from the repository" steps, reading the code for this task.
-2. Section 1: write scripts/${guide}/script.md from references/script-template.md. Its heading must be "# ${app.name} / <task name, short>". Check the labels with probe.cjs. In the On screen cell of any line whose click can't be undone (approve, send, pay, delete), add "(one-way)".
+2. Section 1: write scripts/${guide}/script.md from references/script-template.md. Its heading must be "# ${app.name} / <task name, short>". Check the labels with probe.cjs. In the On screen cell of any line whose click can't be undone (approve, send, pay, delete), add "(one-way)". Follow the skill's script rules: something happens in the first line, every "click X" line clicks X, and each voice line fits on one caption line.
 3. Write scripts/${guide}/notes.md: the saves this video makes, which are one-way, guards, dialogs, and anything that shapes the takes.
 Do not make the voice and do not record. The person approves the script in the studio.`
   return runClaude(key(app.slug, guide), 'script', prompt, {

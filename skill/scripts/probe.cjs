@@ -6,7 +6,7 @@ const { playwright, profileDir } = require('./lib.cjs');
 const [project, url, shot] = process.argv.slice(2);
 (async () => {
   const profile = profileDir();
-  const ctx = await playwright(project).chromium.launchPersistentContext(profile, { headless: true, viewport: { width: 1440, height: 900 } });
+  const ctx = await playwright(project).chromium.launchPersistentContext(profile, { headless: true, viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2 });
   const session = path.join(profile, 'session.json');
   if (fs.existsSync(session)) await ctx.addCookies(JSON.parse(fs.readFileSync(session, 'utf8')));
   await ctx.route('**/*', (r) => (r.request().method() === 'GET' || !r.request().url().startsWith('http') ? r.continue() : r.abort()));

@@ -20,6 +20,7 @@ export type Video = {
   status: string
   notes: string
   task: string
+  outline: { task: string, clear: boolean, angles: { title: string, who: string, after: string, steps: string[] }[], chosen: object | null } | null
   job: { kind: string, state: string, steps: string[], error?: string, started?: number } | null
   overlay?: Overlay
 }

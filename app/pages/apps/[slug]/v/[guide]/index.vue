@@ -71,6 +71,20 @@ async function retry() {
   } catch (e) { problem.value = errorText(e) }
 }
 
+const redo = ref(false)
+const picking = computed(() => !working.value && !redo.value && !!video.value?.outline && !video.value.outline.chosen && video.value.job?.state !== 'error')
+async function choose(angle: number, steps: string[]) {
+  problem.value = ''
+  try {
+    await $fetch(`${base}/outline`, { method: 'POST', body: { angle, steps } })
+    load()
+  } catch (e) { problem.value = errorText(e) }
+}
+async function retryAndClose() {
+  await retry()
+  if (!problem.value) redo.value = false
+}
+
 async function sendAsk() {
   if (!ask.value.trim()) return
   problem.value = ''
@@ -135,12 +149,16 @@ const shotMeta = computed(() => {
           />
         </template>
         <div v-if="video && !video.lines.length" class="flex flex-col gap-2 p-4" aria-live="polite">
-          <JobProgress v-if="video.job" :job="video.job" />
-          <p v-else class="m-0 font-medium">No script yet</p>
-          <form v-if="!working && video.job?.state === 'error'" class="mt-4 flex flex-col gap-2" @submit.prevent="retry">
+          <OutlinePicker v-if="picking" :outline="video.outline!" :busy="working" @choose="choose" @redo="redo = true" />
+          <JobProgress v-else-if="video.job && !redo" :job="video.job" />
+          <p v-else-if="!redo" class="m-0 font-medium">No script yet</p>
+          <form v-if="!working && (video.job?.state === 'error' || redo)" class="mt-4 flex flex-col gap-2" @submit.prevent="retryAndClose">
             <label for="retry-task" class="font-medium">What the video should show</label>
             <textarea id="retry-task" v-model="retryTask" rows="3" maxlength="500" required class="field h-auto resize-none py-2 leading-[1.4]" />
-            <button class="btn btn-primary self-start"><PhArrowClockwise :size="16" />Write the script again</button>
+            <div class="flex gap-2">
+              <button class="btn btn-primary"><PhArrowClockwise :size="16" />{{ redo || !video.outline?.chosen || retryTask !== video.outline?.task ? 'Draft outlines again' : 'Write the script again' }}</button>
+              <button v-if="redo" type="button" class="btn btn-plain" @click="redo = false">Back to the outlines</button>
+            </div>
           </form>
         </div>
         <template v-else-if="video && tab === 'script'">

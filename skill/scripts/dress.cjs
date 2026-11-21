@@ -15,8 +15,13 @@ const out = path.join(project, 'out');
 const work = path.join(out, 'dress', guide);
 const silent = path.join(out, `${guide}.silent.mp4`);
 const plan = JSON.parse(fs.readFileSync(path.join(out, `${guide}.overlay.json`), 'utf8'));
+// plan.size is the page in CSS pixels; the take is S times bigger (a sharp, high-DPI take). Overlays are laid
+// out in CSS pixels and drawn at S, so captions and the cursor keep their size relative to the page.
 const size = plan.size;
 const [W, H] = size;
+const S = plan.scale || 1;
+const even = (n) => Math.round(n / 2) * 2;
+const VW = even(W * S), VH = even(H * S);
 const FPS = 25;
 
 const captions = Object.fromEntries(
@@ -26,6 +31,7 @@ const captions = Object.fromEntries(
 const { look } = O.readLook(project, guide);
 const pins = O.readPins(project, guide);
 const box = O.frameBox(look, size);
+const vbox = { x: Math.round(box.x * S), y: Math.round(box.y * S), w: even(box.w * S), h: even(box.h * S) };
 const framed = look.frame.style !== 'full';
 
 // Each caption stays up until the next line starts; the last one until just before the end.
@@ -45,11 +51,11 @@ function commands() {
       continue;
     }
     if (c.k === 'move' && shown && c.t - last < 1 / 30) continue;
-    rows.push(`${t} overlay@cur x ${c.x - 24}, overlay@cur y ${c.y - 24};`);
+    rows.push(`${t} overlay@cur x ${Math.round((c.x - 24) * S)}, overlay@cur y ${Math.round((c.y - 24) * S)};`);
     shown = true;
     last = c.t;
     if (c.k === 'down' && look.cursor.click === 'ripple') {
-      rows.push(`${t} overlay@rip x ${c.x - 32}, overlay@rip y ${c.y - 32};`);
+      rows.push(`${t} overlay@rip x ${Math.round((c.x - 32) * S)}, overlay@rip y ${Math.round((c.y - 32) * S)};`);
       rows.push(`${(c.t + 0.35).toFixed(3)} overlay@rip x ${hide}, overlay@rip y ${hide};`);
     }
   }
@@ -61,7 +67,7 @@ function commands() {
   fs.rmSync(work, { recursive: true, force: true });
   fs.mkdirSync(work, { recursive: true });
   const browser = await playwright(project).chromium.launch();
-  const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 1 });
+  const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: S });
   const shot = async (html, file, w = W, h = H) => {
     await page.setViewportSize({ width: w, height: h });
     await page.setContent(`<style>html,body{margin:0;background:transparent}${O.css()}</style><div class="g-layer" style="width:${w}px;height:${h}px;--g-color:${look.cursor.color}">${html}</div>`);
@@ -85,8 +91,8 @@ function commands() {
     mask = inputs.push(['loop', await shot(O.maskHtml(look, size), path.join(work, 'mask.png'), box.w, box.h)]);
   }
   const caps = [];
-  for (const w of windows) {
-    const html = O.captionHtml(look, captions[w.id]);
+  for (const [n, w] of windows.entries()) {
+    const html = O.captionHtml(look, captions[w.id], { n: n + 1, of: windows.length }, size);
     if (html) caps.push({ ...w, i: inputs.push(['img', await shot(html, path.join(work, `${w.id}-caption.png`))]) });
   }
   await browser.close();
@@ -100,21 +106,23 @@ function commands() {
   let n = 0;
   const next = () => `v${++n}`;
   const add = (inputsLabel, filter) => { const o = next(); steps.push(`${inputsLabel}${filter}[${o}]`); v = o; };
-  const between = (w) => `enable='between(t,${w.a.toFixed(3)},${w.b.toFixed(3)})'`;
+  const between = (w) => `enable='gte(t,${w.a.toFixed(3)})*lt(t,${w.b.toFixed(3)})'`;
 
   add(`[${v}]`, `sendcmd=f='${path.join(work, 'cmds.txt').replace(/'/g, "\\'")}'`);
   for (const m of marked) add(`[${v}][${m.i}:v]`, `overlay=0:0:${between(m)}`);
   add(`[${v}][${rip}:v]`, 'overlay@rip=x=-200:y=-200');
   add(`[${v}][${cur}:v]`, 'overlay@cur=x=-200:y=-200');
-  const zoom = O.zoomExpr(O.zoomWindows(look, plan.lines, plan.targets), size);
-  if (zoom) add(`[${v}]`, `zoompan=z='${zoom.z}':x='${zoom.x}':y='${zoom.y}':d=1:s=${W}x${H}:fps=${FPS}`);
+  const zoom = O.zoomExpr(O.zoomWindows(look, plan.lines, plan.targets, size).map((w) => ({ ...w, cx: w.cx * S, cy: w.cy * S })), [VW, VH]);
+  if (zoom) add(`[${v}]`, `zoompan=z='${zoom.z}':x='${zoom.x}':y='${zoom.y}':d=1:s=${VW}x${VH}:fps=${FPS}`);
   if (framed) {
-    add(`[${v}]`, `scale=${box.w}:${box.h},format=rgba`);
+    add(`[${v}]`, `scale=${vbox.w}:${vbox.h},format=rgba`);
     const capture = v;
-    add(`[${mask}:v]`, 'format=gray');
+    add(`[${mask}:v]`, `scale=${vbox.w}:${vbox.h},format=gray`);
     add(`[${capture}][${v}]`, 'alphamerge');
-    add(`[${bg}:v][${v}]`, `overlay=${box.x}:${box.y}:shortest=1`);
-  }
+    const cut = v;
+    add(`[${bg}:v]`, `scale=${VW}:${VH}`);
+    add(`[${v}][${cut}]`, `overlay=${vbox.x}:${vbox.y}:shortest=1`);
+  } else if (S !== 1) add(`[${v}]`, `scale=${VW}:${VH}`);
   for (const c of caps) add(`[${v}][${c.i}:v]`, `overlay=0:0:${between(c)}`);
   add(`[${v}]`, 'format=yuv420p');
 

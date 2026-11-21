@@ -12,7 +12,8 @@ const project = path.resolve(process.argv[2]);
 const guide = process.argv[3];
 const profile = profileDir();
 const config = require(path.join(project, 'takes.cjs'));
-const W = config.width || 1440, H = config.height || 900;
+// A smaller page filmed at high DPI: the app's text comes out larger and sharp. The video is S times the page.
+const W = config.width || 1280, H = config.height || 800, S = config.scale || 1.5;
 const GAP = 350;
 const out = path.join(project, 'out');
 const raw = path.join(out, 'raw');
@@ -46,7 +47,10 @@ const decorate = (css) => {
   const ctx = await playwright(project).chromium.launchPersistentContext(profile, {
     headless: true, // a visible window is cut to the screen height, which clips the bottom of the video
     viewport: { width: W, height: H },
-    recordVideo: { dir: raw, size: { width: W, height: H } },
+    // The recorder films at the window's real pixels, which only this flag doubles; deviceScaleFactor alone pads.
+    deviceScaleFactor: 2,
+    args: ['--force-device-scale-factor=2'],
+    recordVideo: { dir: raw, size: { width: Math.round(W * S / 2) * 2, height: Math.round(H * S / 2) * 2 } },
     ignoreDefaultArgs: ['--enable-automation'],
   });
   const session = path.join(profile, 'session.json');
@@ -217,7 +221,7 @@ const decorate = (css) => {
   if (t.cleanup) await t.cleanup().catch((e) => { console.error('CLEANUP FAILED', e.message); process.exitCode = 1; });
   await ctx.close();
   fs.renameSync(await video.path(), path.join(raw, `${guide}.webm`));
-  fs.writeFileSync(path.join(raw, `${guide}.timing.json`), JSON.stringify({ size: [W, H], events, cursor, targets, writes: [...writes], blocked: [...blocked] }, null, 1));
+  fs.writeFileSync(path.join(raw, `${guide}.timing.json`), JSON.stringify({ size: [W, H], scale: S, events, cursor, targets, writes: [...writes], blocked: [...blocked] }, null, 1));
   console.log('VIDEO', path.join(raw, `${guide}.webm`), 'events', events.length);
   console.log('WRITES', [...writes].join('\n  '));
   console.log('BLOCKED', [...blocked].join('\n  '));

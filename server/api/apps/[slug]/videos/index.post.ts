@@ -13,6 +13,6 @@ export default defineEventHandler(async (event) => {
   mkdirSync(join(appDir(app.slug), 'scripts', guide), { recursive: true })
   // Kept so a failed script can be written again from the same request.
   writeFileSync(join(appDir(app.slug), 'scripts', guide, 'task.txt'), task)
-  startScript(app, guide, task)
+  startOutline(app, guide, task)
   return { guide }
 })

@@ -7,6 +7,7 @@ const props = defineProps<{ job: JobView, compact?: boolean }>()
 
 const TITLES: Record<string, [string, string]> = {
   connect: ['Reading the code', 'Code read'],
+  plan: ['Drafting outlines', 'Outlines ready'],
   script: ['Writing the script', 'Script written'],
   change: ['Changing the script', 'Script changed'],
   record: ['Filming', 'Filmed'],

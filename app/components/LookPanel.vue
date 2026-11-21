@@ -5,7 +5,7 @@ const props = defineProps<{ look: Look, scope: 'app' | 'video', appName: string,
 const emit = defineEmits<{ change: [look: Look, scope: 'app' | 'video'], render: [] }>()
 
 const COLOURS = ['#1E97F1', '#111111', '#FFFFFF', '#DC2626', '#16A34A', '#F59E0B']
-const NAMES: Record<string, string> = { full: 'Full', framed: 'Framed', browser: 'Browser', on: 'On', off: 'Off', serif: 'Serif', sans: 'Sans', rounded: 'Rounded', s: 'S', m: 'M', l: 'L', dark: 'Dark', light: 'Light', none: 'None', bottom: 'Bottom', top: 'Top', ring: 'Ring', arrow: 'Arrow', dot: 'Dot', ripple: 'Ripple' }
+const NAMES: Record<string, string> = { full: 'Full', framed: 'Framed', browser: 'Browser', on: 'On', off: 'Off', serif: 'Serif', sans: 'Sans', rounded: 'Rounded', s: 'S', m: 'M', l: 'L', bar: 'Bar + step', dark: 'Dark', light: 'Light', none: 'None', bottom: 'Bottom', top: 'Top', ring: 'Ring', arrow: 'Arrow', dot: 'Dot', ripple: 'Ripple' }
 const ROWS = {
   caption: [['font', 'Font'], ['size', 'Size'], ['box', 'Box'], ['place', 'Place']],
   cursor: [['shape', 'Shape'], ['click', 'On click']],

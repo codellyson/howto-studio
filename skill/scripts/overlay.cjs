@@ -4,12 +4,12 @@ const fs = require('fs');
 const path = require('path');
 
 const DEFAULT_LOOK = {
-  caption: { font: 'serif', size: 'm', box: 'dark', place: 'bottom' },
-  cursor: { shape: 'ring', color: '#1E97F1', click: 'ripple' },
+  caption: { font: 'sans', size: 'm', box: 'bar', place: 'bottom' },
+  cursor: { shape: 'arrow', color: '#111111', click: 'ripple' },
   frame: { style: 'full', background: 'sand', padding: 'm', corners: 's', shadow: 'on', zoom: 'off' },
 };
 const CHOICES = {
-  caption: { font: ['serif', 'sans', 'rounded'], size: ['s', 'm', 'l'], box: ['dark', 'light', 'none'], place: ['bottom', 'top'] },
+  caption: { font: ['serif', 'sans', 'rounded'], size: ['s', 'm', 'l'], box: ['bar', 'dark', 'light', 'none'], place: ['bottom', 'top'] },
   cursor: { shape: ['ring', 'arrow', 'dot'], click: ['ripple', 'none'] },
   frame: { style: ['full', 'framed', 'browser'], background: ['sand', 'sky', 'mist', 'graphite'], padding: ['s', 'm', 'l'], corners: ['none', 's', 'l'], shadow: ['on', 'off'], zoom: ['off', 'on'] },
 };
@@ -23,7 +23,7 @@ const PIN_KINDS = ['ring', 'label', 'arrow'];
 const PAD = { s: 0.04, m: 0.07, l: 0.1 };
 const RADIUS = { none: 0, s: 10, l: 20 };
 const BAR = 40;
-const ZOOM = { scale: 1.6, ramp: 0.6 };
+const ZOOM = { scale: 1.4, ramp: 0.5, before: 1.2, after: 0.8 };
 
 const readJson = (f) => (fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : null);
 const lookFiles = (project, guide) => ({ app: path.join(project, 'look.json'), video: path.join(project, 'scripts', guide, 'look.json') });
@@ -108,14 +108,18 @@ function shortAddress(url) {
 
 // ---- Zoom on the click ----
 
-// Each line that clicks something zooms on its first click: in over the line's start, out before the next line.
-function zoomWindows(look, lines, targets) {
+// A line that clicks something small zooms in on it as the cursor arrives, and out just after the click,
+// because the click usually changes the page and the zoomed spot then shows the wrong thing. Big targets
+// (a text box, a card) are readable already, so they don't zoom.
+function zoomWindows(look, lines, targets, [W, H] = [1440, 900]) {
   if (look.frame.zoom !== 'on') return [];
   return lines.map((l, i) => {
     const t = targets.find((x) => x.line === l.id);
-    if (!t) return null;
-    const b = i + 1 < lines.length ? lines[i + 1].t : l.t + l.len;
-    return { a: l.t, b, cx: t.box.x + t.box.w / 2, cy: t.box.y + t.box.h / 2 };
+    if (!t || t.box.w > W * 0.3 || t.box.h > H * 0.2) return null;
+    const end = i + 1 < lines.length ? lines[i + 1].t : l.t + l.len;
+    const at = typeof t.t === 'number' ? t.t : l.t;
+    const a = Math.max(l.t, at - ZOOM.before), b = Math.min(end, at + ZOOM.after);
+    return b - a > ZOOM.ramp ? { a, b, cx: t.box.x + t.box.w / 2, cy: t.box.y + t.box.h / 2 } : null;
   }).filter(Boolean);
 }
 
@@ -163,10 +167,16 @@ function pinsHtml(pins = [], targets = []) {
   return html;
 }
 
-// The caption sits on the whole video, outside any frame or zoom.
-function captionHtml(look, caption) {
+// The caption sits on the whole video, outside any frame or zoom. The bar style also shows the step, "3 / 10",
+// and lines up with the edges of the framed capture.
+function captionHtml(look, caption, step, size) {
   const c = look.caption;
-  return caption ? `<div class="g-cap font-${c.font} size-${c.size} box-${c.box} place-${c.place}">${esc(caption)}</div>` : '';
+  if (!caption) return '';
+  const bar = c.box === 'bar';
+  const chip = bar && step ? `<span class="g-step">${step.n} / ${step.of}</span>` : '';
+  const inset = bar && size ? Math.max(24, frameBox(look, size).x + 16) : 0;
+  const style = inset ? ` style="left:${inset}px;right:${inset}px"` : '';
+  return `<div class="g-cap font-${c.font} size-${c.size} box-${c.box} place-${c.place}"${style}>${chip}<span>${esc(caption)}</span></div>`;
 }
 
 // Kept for callers that draw everything on the capture at once: caption plus marks.
@@ -178,14 +188,14 @@ const rippleHtml = () => '<div class="g-ripple"></div>';
 
 // One still for How-to Studio: the frame, the capture (an image) zoomed as it is at time t, its marks and cursor,
 // and the caption. size is the take's size; the result is that size too, for the page to scale.
-function previewHtml({ look, size, address, src, caption, pins, targets, cursor, zoom }) {
+function previewHtml({ look, size, address, src, caption, step, pins, targets, cursor, zoom }) {
   const [W, H] = size;
   const b = frameBox(look, size);
   const z = zoom || { z: 1, x: 0, y: 0 };
   const onCapture = `<img src="${esc(src)}" alt="" style="position:absolute;left:0;top:0;width:${W}px;height:${H}px">${pinsHtml(pins, targets)}`
     + (cursor ? `<div class="g-cursor-box" style="left:${cursor.x - 24}px;top:${cursor.y - 24}px">${cursorHtml(look)}</div>` : '');
   const inner = `<div style="position:absolute;left:0;top:0;width:${W}px;height:${H}px;transform-origin:0 0;transform:scale(${b.w / W}) scale(${z.z}) translate(${-z.x}px,${-z.y}px)">${onCapture}</div>`;
-  return frameHtml(look, size, address, inner) + captionHtml(look, caption);
+  return frameHtml(look, size, address, inner) + captionHtml(look, caption, step, size);
 }
 
 const css = () => fs.readFileSync(path.join(__dirname, 'overlay.css'), 'utf8');
