@@ -130,6 +130,16 @@ export function listVideos(slug: string) {
 
 // The skill's own overlay module, so the preview here is built by the same code that draws the video.
 export const overlay = createRequire(import.meta.url)(join(SKILL, 'scripts', 'overlay.cjs'))
+const checker = createRequire(import.meta.url)(join(SKILL, 'scripts', 'check.cjs'))
+
+export type Checks = { lines: Record<string, string[]>, video: string[], count: number, seconds: number }
+// The script rules, checked before filming. Uses the real voice lengths once the voice has been made.
+export function scriptChecks(slug: string, guide: string, lines: Line[]): Checks | null {
+  if (!lines.length) return null
+  let durations = null
+  try { durations = JSON.parse(readFileSync(join(appDir(slug), 'audio', guide, 'durations.json'), 'utf8')) } catch {}
+  return checker.checkScript(lines, durations)
+}
 const cleanFile = (slug: string, guide: string) => join(appDir(slug), 'out', `${guide}.silent.mp4`)
 const planFile = (slug: string, guide: string) => join(appDir(slug), 'out', `${guide}.overlay.json`)
 export type Plan = { size: [number, number], duration: number, lines: { id: string, t: number, len: number }[], cursor: { t: number, k: string, x: number, y: number }[], targets: { line: string, t: number, name: string, box: { x: number, y: number, w: number, h: number } }[] }
@@ -349,6 +359,7 @@ function describe(name: string, i: any): string | null {
   if (cmd.includes('record.cjs')) return 'Filming the take'
   if (cmd.includes('cut.py')) return 'Cutting and checking the video'
   if (cmd.includes('probe.cjs')) return 'Looking at the live page'
+  if (cmd.includes('check.cjs')) return 'Checking the script'
   if (cmd.includes('repo-writes.cjs')) return 'Listing what the app saves'
   if (/pnpm (add|install)|playwright install/.test(cmd)) return 'Setting up the recorder'
   if (cmd.startsWith('curl')) return 'Checking the real data is unchanged'

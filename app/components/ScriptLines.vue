@@ -7,6 +7,7 @@ const props = defineProps<{
   editable?: boolean
   times?: Record<string, string>
   done?: number
+  flags?: Record<string, string[]>
 }>()
 const emit = defineEmits<{ select: [id: string], save: [id: string, text: string] }>()
 
@@ -87,6 +88,9 @@ const num = (id: string) => id.replace(/^L/, '')
         <span v-if="done !== undefined && i < done" class="meta mt-0.5 flex-none font-sans" aria-label="Filmed">✓</span>
         <span v-if="oneWay?.includes(l.id)" class="mt-2 size-1.5 flex-none rounded-full bg-oneway" title="Can't be undone. Answered in the browser while filming." />
       </button>
+      <ul v-if="flags?.[l.id]?.length && editing !== l.id" class="m-0 ml-[46px] flex list-none flex-col gap-0.5 p-0 pr-[10px] pb-1.5 font-sans text-[13px] leading-[1.35] text-oneway">
+        <li v-for="f in flags[l.id]" :key="f">{{ f }}</li>
+      </ul>
       <slot v-if="l.id === selected && editing !== l.id" name="selected" :id="l.id" />
     </li>
   </ol>

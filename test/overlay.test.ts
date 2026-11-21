@@ -71,3 +71,19 @@ test('captions below a framed capture get their own strip, and can be turned off
   assert.match(O.captionHtml(O.cleanLook({ caption: { place: 'below' } }), 'Hi', null, [1280, 800]), /place-bottom/)
   assert.equal(O.captionHtml(O.cleanLook({ caption: { place: 'off' } }), 'Hi', null, [1280, 800]), '')
 })
+
+test('the script check flags idle lines, fake clicks, long captions, length and a missing ending', () => {
+  const C = createRequire(import.meta.url)('../skill/scripts/check.cjs')
+  const f = C.checkScript([
+    { id: 'L01', screen: 'Cursor rests on the heading.', voice: 'This is the app.' },
+    { id: 'L02', screen: 'Click "New". The form opens.', voice: 'Click New.' },
+    { id: 'L03', screen: 'Cursor moves over Start. Not clicked.', voice: 'Click Start to go through them one at a time, most urgent first, until none are left.' },
+    { id: 'L04', screen: 'Cursor rests on the list.', voice: 'That is all.' },
+  ], { L01: 30, L02: 20, L03: 10, L04: 5 })
+  assert.match(f.lines.L01[0], /first line/)
+  assert.equal(f.lines.L02, undefined)
+  assert.deepEqual(f.lines.L03.map((t: string) => t.split(' ')[0]), ['Only', 'The', 'Too'])
+  assert.equal(f.lines.L04, undefined)
+  assert.equal(f.video.length, 2)
+  assert.equal(f.count, 6)
+})

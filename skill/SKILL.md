@@ -69,6 +69,14 @@ Write for someone who is not technical and is slightly nervous about breaking so
 - Keep each line short enough for one caption line: about 70 characters. Split longer lines.
 - When the video switches to another person's view, make the change visible (their name or page) and say whose view it is.
 - A vague request ("introduce the app") is not one task. Pick one task, or ask which, before writing.
+
+Then check the script against these rules:
+
+```bash
+node $SKILL/scripts/check.cjs <project> <guide>
+```
+
+Fix what it flags. If a flag is wrong for this video (a pause that really is needed), leave it and say why in the notes.
 - **End by showing the result from the other side**: the page as the customer, visitor or recipient gets it, without editing controls, and how the viewer can check it themselves. People want to see that it worked. This is easy to forget, and it is usually the most reassuring shot in the video. When the viewer already is the other side (a client replying to a review link, say), end on the confirmation they see, and say what happens next for the other person.
 
 Use `probe.cjs` to read the real labels before writing them into a script:

@@ -85,6 +85,16 @@ async function retryAndClose() {
   if (!problem.value) redo.value = false
 }
 
+// The script check's flags, as one change request for the agent.
+const checks = computed(() => video.value?.checks)
+async function fixFlags() {
+  const c = checks.value
+  if (!c?.count) return
+  const items = [...c.video, ...Object.entries(c.lines).flatMap(([id, list]) => list.map(t => `${id}: ${t}`))]
+  ask.value = `Fix what the script check found, keeping the task and the ending:\n${items.map(t => `- ${t}`).join('\n')}`
+  await sendAsk()
+}
+
 async function sendAsk() {
   if (!ask.value.trim()) return
   problem.value = ''
@@ -127,6 +137,11 @@ const shotMeta = computed(() => {
     </TopBar>
 
     <p v-if="error || problem || (video?.job?.state === 'error' && video.lines.length)" class="m-0 border-b border-line px-4 py-2 text-rec" role="alert">{{ problem || error || video?.job?.error }}</p>
+    <div v-else-if="checks?.count && !working && video?.status !== 'done'" class="flex items-center gap-3 border-b border-line px-4 py-2" role="status">
+      <span class="text-oneway">{{ checks.count === 1 ? '1 thing' : `${checks.count} things` }} to fix before filming.</span>
+      <span v-for="v in checks.video" :key="v" class="meta max-lg:hidden">{{ v }}</span>
+      <button type="button" class="btn btn-secondary ml-auto h-7" @click="fixFlags">Fix them</button>
+    </div>
     <p v-else-if="video?.status === 'changed'" class="m-0 border-b border-line px-4 py-2 text-muted">The script changed after filming. Record again to update the video.</p>
     <div v-else-if="working && video?.job && video.lines.length" class="border-b border-line px-4 py-2"><JobProgress compact :job="video.job" /></div>
     <p v-else-if="view?.stale" class="m-0 flex items-center gap-3 border-b border-line px-4 py-2 text-muted">The look or marks changed. The video still has the old ones.<button type="button" class="btn btn-secondary h-7" @click="restyle">Make the video again</button></p>
@@ -162,7 +177,7 @@ const shotMeta = computed(() => {
           </form>
         </div>
         <template v-else-if="video && tab === 'script'">
-          <ScriptLines :lines="video.lines" :selected="selected" :one-way="oneWayLines" :editable="!working" @select="selected = $event" @save="saveLine">
+          <ScriptLines :lines="video.lines" :selected="selected" :one-way="oneWayLines" :flags="checks?.lines" :editable="!working" @select="selected = $event" @save="saveLine">
             <template v-if="view?.restyle" #selected="{ id }">
               <PinsEditor :line="id" :targets="view.lines[id]?.targets ?? []" :pins="view.pins" :disabled="working" @save="savePins" />
             </template>

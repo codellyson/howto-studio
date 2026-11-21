@@ -118,7 +118,7 @@ Task for this video: ${task}
 
 Do these parts only:
 1. The "Write the takes from the repository" steps, reading the code for this task.
-2. Section 1: write scripts/${guide}/script.md from references/script-template.md. Its heading must be "# ${app.name} / <task name, short>". Check the labels with probe.cjs. In the On screen cell of any line whose click can't be undone (approve, send, pay, delete), add "(one-way)". Follow the skill's script rules: something happens in the first line, every "click X" line clicks X, and each voice line fits on one caption line.
+2. Section 1: write scripts/${guide}/script.md from references/script-template.md. Its heading must be "# ${app.name} / <task name, short>". Check the labels with probe.cjs. In the On screen cell of any line whose click can't be undone (approve, send, pay, delete), add "(one-way)". Follow the skill's script rules: something happens in the first line, every "click X" line clicks X, and each voice line fits on one caption line. Then run node ${SKILL}/scripts/check.cjs . ${guide} and fix what it flags; if a flag is wrong for this video, keep the line and say why in notes.md.
 3. Write scripts/${guide}/notes.md: the saves this video makes, which are one-way, guards, dialogs, and anything that shapes the takes.
 Do not make the voice and do not record. The person approves the script in the studio.`
   return runClaude(key(app.slug, guide), 'script', prompt, {
@@ -131,7 +131,7 @@ export function startChange(app: AppConfig, guide: string, request: string) {
   const prompt = () => `${shared(app, guide)}
 
 Change scripts/${guide}/script.md as asked: "${request}"
-Keep the skill's table format. If the request is about timing, pauses or clicks rather than words, record it in scripts/${guide}/notes.md so the takes follow it. Do not make the voice and do not record.`
+Keep the skill's table format. Afterwards run node ${SKILL}/scripts/check.cjs . ${guide} and fix anything the change broke. If the request is about timing, pauses or clicks rather than words, record it in scripts/${guide}/notes.md so the takes follow it. Do not make the voice and do not record.`
   return runClaude(key(app.slug, guide), 'change', prompt, { cwd: appDir(app.slug), env: guideEnv(app), ...onThisMac(app) })
 }
 
