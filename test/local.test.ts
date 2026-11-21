@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 process.env.STUDIO_HOME = mkdtempSync(join(tmpdir(), 'studio-local-'))
-const { detectLocal, ensureLocal, releaseLocal, isLocalUrl } = await import('../server/utils/local.ts')
+const { detectLocal, ensureLocal, releaseLocal, isLocalUrl, portArgs } = await import('../server/utils/local.ts')
 const { appDir } = await import('../server/utils/studio.ts')
 
 test('the dev command and port come from package.json and the lockfile', () => {
@@ -62,4 +62,23 @@ test('a running server whose pages fail is not reused', async () => {
   const app = { slug: 'local-broken', name: 'T', repo: tmpdir(), site: 'http://localhost:47995', voice: 'Michael', fakeSaves: true, mode: 'local' as const, start: 'true' }
   await assert.rejects(ensureLocal(app, () => {}), /already running at http:\/\/localhost:47995, but its pages fail \(500: Cannot find package '@ai-sdk\/anthropic'/)
   server.close()
+})
+
+test('a package script is started on a free port, never on the saved one', async () => {
+  assert.equal(portArgs('npm run dev', 5000), 'npm run dev -- --port 5000')
+  assert.equal(portArgs('pnpm --filter @a/web dev', 5000), 'pnpm --filter @a/web dev --port 5000')
+  assert.equal(portArgs('pnpm dev --port 3000', 5000), null)
+  assert.equal(portArgs('PORT=3000 pnpm dev', 5000), null)
+  const repo = mkdtempSync(join(tmpdir(), 'repo-'))
+  writeFileSync(join(repo, 'server.cjs'), "require('http').createServer((q, s) => s.end('ok')).listen(+process.argv[process.argv.indexOf('--port') + 1])")
+  writeFileSync(join(repo, 'package.json'), JSON.stringify({ scripts: { dev: 'node server.cjs' } }))
+  const { createServer } = await import('node:http')
+  const stale = createServer((q, s) => { s.statusCode = 500; s.end('stale') }).listen(47995)
+  const app = { slug: 'local-free', name: 'T', repo, site: 'http://localhost:47995', voice: 'Michael', fakeSaves: true, mode: 'local' as const, start: 'npm run dev' }
+  mkdirSync(appDir(app.slug), { recursive: true })
+  await ensureLocal(app, () => {})
+  assert.notEqual(app.site, 'http://localhost:47995')
+  assert.equal(await (await fetch(app.site)).text(), 'ok')
+  releaseLocal(app.slug)
+  stale.close()
 })

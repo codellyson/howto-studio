@@ -1,10 +1,11 @@
 import { spawn } from 'node:child_process'
 import { existsSync, openSync, readFileSync } from 'node:fs'
+import { createServer } from 'node:net'
 import { dirname, join } from 'node:path'
 import { appDir, readApp, writeApp, type AppConfig } from './studio.ts'
 
-// Filming an app on this Mac: the studio starts its dev server for a job and stops it after,
-// unless something was already answering at that address, which is then used as it is.
+// Filming an app on this Mac: the studio starts its own copy of the dev server on a free port for a job,
+// and stops it after. A start command with a fixed port uses the saved address, reusing a server already there.
 
 const DEFAULT_PORTS: [string, number][] = [['nuxt', 3000], ['next', 3000], ['astro', 4321], ['@sveltejs/kit', 5173], ['vite', 5173], ['@remix-run/dev', 3000], ['react-scripts', 3000], ['@angular/core', 4200], ['gatsby', 8000]]
 
@@ -68,28 +69,49 @@ async function brokenAt(url: string) {
   } catch { return '' }
 }
 
-const running = new Map<string, { pid?: number, users: number }>()
+// A plain package script ("pnpm dev", "npm run dev") can take a port; one that names its own port can't be moved.
+export function portArgs(command: string, port: number) {
+  if (/(?:--port|-p)[ =]?\d|PORT=\d/.test(command)) return null
+  if (/^npm run [\w:-]+$/.test(command)) return `${command} -- --port ${port}`
+  if (/^(?:pnpm|yarn|bun)(?: --filter \S+)? [\w:-]+$/.test(command)) return `${command} --port ${port}`
+  return null
+}
+
+function freePort() {
+  return new Promise<number>((resolve, reject) => {
+    const srv = createServer().once('error', reject).listen(0, () => {
+      const { port } = srv.address() as { port: number }
+      srv.close(() => resolve(port))
+    })
+  })
+}
+
+const running = new Map<string, { pid?: number, users: number, site: string }>()
 
 // Before a job: make sure the app answers at its address, starting it if needed (up to two minutes).
 export async function ensureLocal(app: AppConfig, say: (step: string) => void) {
   if (app.mode !== 'local') return
   const held = running.get(app.slug)
-  if (held) { held.users++; return }
-  if (await answers(app.site)) {
+  if (held) { held.users++; app.site = held.site; return }
+  const port = app.start ? await freePort() : 0
+  const command = app.start && portArgs(app.start, port)
+  if (command) app.site = `http://localhost:${port}`
+  else if (await answers(app.site)) {
     const broken = await brokenAt(app.site)
     // Not ours to stop: it was running before this job. Filming it would only record error pages.
     if (broken) throw new Error(`Something is already running at ${app.site}, but its pages fail (${broken}). Stop that server, or change the address in Settings, then try again`)
-    running.set(app.slug, { users: 1 })
+    running.set(app.slug, { users: 1, site: app.site })
     return
   }
   if (!app.start) throw new Error(`Nothing answers at ${app.site}, and there is no command to start the app`)
-  say(`Starting the app: ${app.start}`)
+  say(`Starting the app: ${command || app.start}`)
   const logFile = join(appDir(app.slug), 'local.log')
   const log = openSync(logFile, 'w')
   // A login shell, so the person's PATH (node, pnpm) applies, as it does in their terminal.
-  const child = spawn(process.env.SHELL || '/bin/zsh', ['-lc', app.start], { cwd: app.repo, detached: true, stdio: ['ignore', log, log] })
+  const child = spawn(process.env.SHELL || '/bin/zsh', ['-lc', command || app.start], { cwd: app.repo, detached: true, stdio: ['ignore', log, log], env: command ? { ...process.env, PORT: String(port) } : process.env })
   child.unref()
-  running.set(app.slug, { pid: child.pid, users: 1 })
+  const started = { pid: child.pid, users: 1, site: app.site }
+  running.set(app.slug, started)
   let exited = false
   for (let i = 0; i < 120; i++) {
     await new Promise(r => setTimeout(r, 1000))
@@ -99,8 +121,9 @@ export async function ensureLocal(app: AppConfig, say: (step: string) => void) {
     const printed = announced(logFile)
     if (printed && new URL(printed).origin !== new URL(app.site).origin && await answers(printed)) {
       say(`The app started at ${printed}, not ${app.site}. Using ${printed}`)
-      app.site = new URL(printed).origin.replace('127.0.0.1', 'localhost')
-      writeApp({ ...readApp(app.slug), site: app.site })
+      app.site = started.site = new URL(printed).origin.replace('127.0.0.1', 'localhost')
+      // A free port changes each time, so only a fixed address is worth saving.
+      if (!command) writeApp({ ...readApp(app.slug), site: app.site })
       return
     }
   }
