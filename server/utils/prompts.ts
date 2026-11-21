@@ -146,7 +146,7 @@ Film this video now, following sections 2 to 5 for ${guide}:
 - Write or update this video's function in takes.cjs, using the repository section and scripts/${guide}/notes.md.
 - ${writes}
 - Record (up to three tries) and cut. The run is done when final/${guide}.mp4 and final/${guide}.lines.json exist.
-Then review the frame sheet as section 6 says, and add what you found to scripts/${guide}/notes.md.`
+Then review the frame sheet as section 6 says, and add what you found to scripts/${guide}/notes.md. Do not write look.json: the person sets the look in the studio. Note look problems in notes.md instead.`
   return runClaude(key(app.slug, guide), 'record', prompt, {
     cwd: appDir(app.slug), env: guideEnv(app), ...onThisMac(app),
     onDone: () => { if (!readRecorded(app.slug, guide)) throw new Error('No finished video was made') },

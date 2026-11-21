@@ -35,7 +35,7 @@ test('a framed capture keeps its shape and leaves room for the browser bar', () 
   assert.ok(Math.abs(b.w / b.h - 1.6) < 0.01)
   assert.equal(b.bar, 40)
   assert.ok(b.y - b.bar >= 0 && b.y + b.h <= 900)
-  assert.deepEqual(O.frameBox(O.cleanLook({}), [1440, 900]), { x: 0, y: 0, w: 1440, h: 900, bar: 0, radius: 0 })
+  assert.deepEqual(O.frameBox(O.cleanLook({}), [1440, 900]), { x: 0, y: 0, w: 1440, h: 900, bar: 0, strip: 0, radius: 0 })
 })
 
 test('zoom eases in on a small clicked element, out just after the click, and stays inside the capture', () => {
@@ -58,5 +58,16 @@ test('the bar caption shows the step and lines up with the framed capture', () =
   const look = O.cleanLook({ frame: { style: 'framed', padding: 'm' } })
   const html = O.captionHtml(look, 'Click New.', { n: 3, of: 10 }, [1280, 800])
   assert.match(html, /<span class="g-step">3 \/ 10<\/span><span>Click New.<\/span>/)
-  assert.match(html, new RegExp(`left:${O.frameBox(look, [1280, 800]).x + 16}px`))
+  assert.match(html, new RegExp(`left:${Math.max(24, O.frameBox(look, [1280, 800]).x)}px`))
+})
+
+test('captions below a framed capture get their own strip, and can be turned off', () => {
+  const look = O.cleanLook({ frame: { style: 'framed', padding: 's' }, caption: { place: 'below' } })
+  const b = O.frameBox(look, [1280, 800])
+  assert.ok(b.strip > 0 && b.y + b.h + b.strip <= 800)
+  const html = O.captionHtml(look, 'Click New.', { n: 1, of: 3 }, [1280, 800])
+  assert.match(html, new RegExp(`top:${b.y + b.h + (800 - b.y - b.h) / 2}px`))
+  // Full bleed has no strip, so the caption falls back to the bottom.
+  assert.match(O.captionHtml(O.cleanLook({ caption: { place: 'below' } }), 'Hi', null, [1280, 800]), /place-bottom/)
+  assert.equal(O.captionHtml(O.cleanLook({ caption: { place: 'off' } }), 'Hi', null, [1280, 800]), '')
 })

@@ -93,6 +93,19 @@ def sheet(video, said, voice, dst):
     subprocess.check_call(['ffmpeg', '-loglevel', 'error', '-y', '-i', video, '-vf', f"select='{expr}',scale=480:-1,tile=4x{(len(said) * 2 + 3) // 4}", '-frames:v', '1', '-fps_mode', 'vfr', dst])
 
 
+def srt(project, g, said, voice, end, dst):
+    """The captions as a subtitle file: players show them as closed captions the viewer can turn on or off."""
+    rows = subprocess.check_output(['python3', '-I', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'lines.py'), os.path.join(project, 'scripts', g, 'script.md')], text=True)
+    text = dict(l.split('\t', 1) for l in rows.strip().split('\n') if '\t' in l)
+    stamp = lambda t: f'{int(t // 3600):02}:{int(t % 3600 // 60):02}:{int(t % 60):02},{int(round(t % 1 * 1000)) % 1000:03}'
+    blocks = []
+    for i, s in enumerate(said):
+        b = said[i + 1]['t'] if i + 1 < len(said) else max(s['t'] + voice[s['id']], end - 0.3)
+        blocks.append(f"{i + 1}\n{stamp(s['t'])} --> {stamp(b)}\n{text.get(s['id'], '').strip()}\n")
+    open(dst, 'w').write('\n'.join(blocks))
+    return dst
+
+
 def main(project, g, flash, redress=False):
     out = os.path.join(project, 'out')
     final_dir = os.path.join(project, 'final')
@@ -109,14 +122,15 @@ def main(project, g, flash, redress=False):
     subprocess.check_call(['node', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dress.cjs'), project, g])
     dressed = os.path.join(out, g + '.dressed.mp4')
     final = os.path.join(final_dir, g + '.mp4')
-    args = ['ffmpeg', '-loglevel', 'error', '-y', '-i', dressed]
+    subs = srt(project, g, said, voice, duration(dressed), os.path.join(out, g + '.srt'))
+    args = ['ffmpeg', '-loglevel', 'error', '-y', '-i', dressed, '-i', subs]
     graph = ''
     for i, s in enumerate(said):
         args += ['-i', os.path.join(audio, s['id'] + '.wav')]
         ms = round(s['t'] * 1000)
-        graph += f'[{i + 1}:a]adelay={ms}|{ms}[a{i}];'
+        graph += f'[{i + 2}:a]adelay={ms}|{ms}[a{i}];'
     graph += ''.join(f'[a{i}]' for i in range(len(said))) + f'amix=inputs={len(said)}:normalize=0:duration=longest,apad[voice]'
-    subprocess.check_call(args + ['-filter_complex', graph, '-map', '0:v', '-map', '[voice]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-shortest', '-movflags', '+faststart', final])
+    subprocess.check_call(args + ['-filter_complex', graph, '-map', '0:v', '-map', '[voice]', '-map', '1:s', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-c:s', 'mov_text', '-metadata:s:s:0', 'language=eng', '-shortest', '-movflags', '+faststart', final])
     sheet(final, said, voice, os.path.join(out, g + '-sheet.png'))
     json.dump({'duration': round(duration(final), 3), 'lines': [{**s, 'len': voice[s['id']]} for s in said]}, open(os.path.join(final_dir, g + '.lines.json'), 'w'), indent=1)
     print(g, round(duration(final), 1), 's', [(s['id'], s['t']) for s in said])

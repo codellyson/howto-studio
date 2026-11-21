@@ -4,12 +4,12 @@ const fs = require('fs');
 const path = require('path');
 
 const DEFAULT_LOOK = {
-  caption: { font: 'sans', size: 'm', box: 'bar', place: 'bottom' },
+  caption: { font: 'sans', size: 'm', box: 'bar', place: 'below' },
   cursor: { shape: 'arrow', color: '#111111', click: 'ripple' },
   frame: { style: 'full', background: 'sand', padding: 'm', corners: 's', shadow: 'on', zoom: 'off' },
 };
 const CHOICES = {
-  caption: { font: ['serif', 'sans', 'rounded'], size: ['s', 'm', 'l'], box: ['bar', 'dark', 'light', 'none'], place: ['bottom', 'top'] },
+  caption: { font: ['serif', 'sans', 'rounded'], size: ['s', 'm', 'l'], box: ['bar', 'dark', 'light', 'none'], place: ['below', 'bottom', 'top', 'off'] },
   cursor: { shape: ['ring', 'arrow', 'dot'], click: ['ripple', 'none'] },
   frame: { style: ['full', 'framed', 'browser'], background: ['sand', 'sky', 'mist', 'graphite'], padding: ['s', 'm', 'l'], corners: ['none', 's', 'l'], shadow: ['on', 'off'], zoom: ['off', 'on'] },
 };
@@ -23,6 +23,8 @@ const PIN_KINDS = ['ring', 'label', 'arrow'];
 const PAD = { s: 0.04, m: 0.07, l: 0.1 };
 const RADIUS = { none: 0, s: 10, l: 20 };
 const BAR = 40;
+// Room under a framed capture for the caption, so it never covers the app ("below").
+const STRIP = 0.1;
 const ZOOM = { scale: 1.4, ramp: 0.5, before: 1.2, after: 0.8 };
 
 const readJson = (f) => (fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : null);
@@ -62,12 +64,13 @@ const POINTER = '<svg viewBox="0 0 20 26"><path d="M1 1 V22 L6.5 16.5 L10.5 25 L
 // The capture's box in the video, keeping its shape. Full bleed fills the video.
 function frameBox(look, [W, H]) {
   const f = look.frame;
-  if (f.style === 'full') return { x: 0, y: 0, w: W, h: H, bar: 0, radius: 0 };
+  if (f.style === 'full') return { x: 0, y: 0, w: W, h: H, bar: 0, strip: 0, radius: 0 };
   const pad = Math.round(W * PAD[f.padding]);
   const bar = f.style === 'browser' ? BAR : 0;
-  const scale = Math.min((W - 2 * pad) / W, (H - 2 * pad - bar) / H);
+  const strip = look.caption.place === 'below' ? Math.round(H * STRIP) : 0;
+  const scale = Math.min((W - 2 * pad) / W, (H - 2 * pad - bar - strip) / H);
   const w = Math.round(W * scale / 2) * 2, h = Math.round(H * scale / 2) * 2;
-  return { x: Math.round((W - w) / 2), y: Math.round((H - h + bar) / 2), w, h, bar, radius: RADIUS[f.corners] };
+  return { x: Math.round((W - w) / 2), y: Math.round((H - h + bar - strip) / 2), w, h, bar, strip, radius: RADIUS[f.corners] };
 }
 
 // Everything behind and around the capture: background, shadow, browser bar. The capture area itself is left
@@ -169,14 +172,22 @@ function pinsHtml(pins = [], targets = []) {
 
 // The caption sits on the whole video, outside any frame or zoom. The bar style also shows the step, "3 / 10",
 // and lines up with the edges of the framed capture.
+// "below" centres it in the strip under a framed capture; with no strip (full bleed) it sits at the bottom.
 function captionHtml(look, caption, step, size) {
   const c = look.caption;
-  if (!caption) return '';
+  if (!caption || c.place === 'off') return '';
   const bar = c.box === 'bar';
   const chip = bar && step ? `<span class="g-step">${step.n} / ${step.of}</span>` : '';
-  const inset = bar && size ? Math.max(24, frameBox(look, size).x + 16) : 0;
-  const style = inset ? ` style="left:${inset}px;right:${inset}px"` : '';
-  return `<div class="g-cap font-${c.font} size-${c.size} box-${c.box} place-${c.place}"${style}>${chip}<span>${esc(caption)}</span></div>`;
+  const b = size ? frameBox(look, size) : null;
+  const rules = [];
+  if (bar && b) rules.push(`left:${Math.max(24, b.x)}px`, `right:${Math.max(24, b.x)}px`);
+  let place = c.place;
+  if (place === 'below') {
+    if (b && b.strip) rules.push(`top:${b.y + b.h + (size[1] - b.y - b.h) / 2}px`, `bottom:auto`, `transform:${bar ? '' : 'translateX(-50%) '}translateY(-50%)`);
+    else place = 'bottom';
+  }
+  const style = rules.length ? ` style="${rules.join(';')}"` : '';
+  return `<div class="g-cap font-${c.font} size-${c.size} box-${c.box} place-${place}"${style}>${chip}<span>${esc(caption)}</span></div>`;
 }
 
 // Kept for callers that draw everything on the capture at once: caption plus marks.
