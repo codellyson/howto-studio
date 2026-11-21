@@ -57,11 +57,14 @@ function setUpRecorder(slug: string) {
 // Jobs that open the site start the app's dev server first when it runs on this Mac, and stop it after.
 const onThisMac = (app: AppConfig) => ({ before: (say: (t: string) => void) => ensureLocal(app, say), after: () => releaseLocal(app.slug) })
 
+// Read when the agent starts, after the app may have moved to a free port.
+const guideEnv = (app: AppConfig) => ({ GUIDE_PROFILE: profileDir(app.slug), get GUIDE_SITE() { return app.site } })
+
 const shared = (app: AppConfig, guide: string) => `You make how-to videos with the howto-video skill. Read ${SKILL}/SKILL.md now and follow it.
 - Project folder: this directory. It is already a skill project for this app.
 - App code: ${app.repo}
 - Site to film: ${app.site}${app.mode === 'local' ? ' (the app running on this Mac from the code above; the studio has started it, so do not start or stop it yourself)' : ''}
-- GUIDE_PROFILE is already set in your environment to ${profileDir(app.slug)}, so run the skill's scripts without prefixing it. Keep that folder: it holds the saved sign-in; never delete it.
+${app.mode === 'local' ? `- The app's port changes on every run. GUIDE_SITE in your environment holds this run's address: takes.cjs must read it (const APP = process.env.GUIDE_SITE || '${app.site}'), and blockWrites must match any localhost port. Never write a fixed port into takes.cjs or the script.\n` : ''}- GUIDE_PROFILE is already set in your environment to ${profileDir(app.slug)}, so run the skill's scripts without prefixing it. Keep that folder: it holds the saved sign-in; never delete it.
 - Video: ${guide}
 - Nobody can answer questions during this run. Decide sensibly, and write anything the person should know to scripts/${guide}/notes.md.
 - Your final message is shown to the person. Make it one or two plain sentences about the video, with no "I" or "we": if the work could not finish, say where it stopped and why (for example "Filming stopped at line 6. The Approve album button never appeared."). No praise, no exclamation marks.`
@@ -119,7 +122,7 @@ Do these parts only:
 3. Write scripts/${guide}/notes.md: the saves this video makes, which are one-way, guards, dialogs, and anything that shapes the takes.
 Do not make the voice and do not record. The person approves the script in the studio.`
   return runClaude(key(app.slug, guide), 'script', prompt, {
-    cwd: appDir(app.slug), env: { GUIDE_PROFILE: profileDir(app.slug) }, ...onThisMac(app),
+    cwd: appDir(app.slug), env: guideEnv(app), ...onThisMac(app),
     onDone: () => { if (!readScript(app.slug, guide).lines.length) throw new Error('No script was written') },
   })
 }
@@ -129,7 +132,7 @@ export function startChange(app: AppConfig, guide: string, request: string) {
 
 Change scripts/${guide}/script.md as asked: "${request}"
 Keep the skill's table format. If the request is about timing, pauses or clicks rather than words, record it in scripts/${guide}/notes.md so the takes follow it. Do not make the voice and do not record.`
-  return runClaude(key(app.slug, guide), 'change', prompt, { cwd: appDir(app.slug), env: { GUIDE_PROFILE: profileDir(app.slug) }, ...onThisMac(app) })
+  return runClaude(key(app.slug, guide), 'change', prompt, { cwd: appDir(app.slug), env: guideEnv(app), ...onThisMac(app) })
 }
 
 export function startRecord(app: AppConfig, guide: string) {
@@ -145,7 +148,7 @@ Film this video now, following sections 2 to 5 for ${guide}:
 - Record (up to three tries) and cut. The run is done when final/${guide}.mp4 and final/${guide}.lines.json exist.
 Then review the frame sheet as section 6 says, and add what you found to scripts/${guide}/notes.md.`
   return runClaude(key(app.slug, guide), 'record', prompt, {
-    cwd: appDir(app.slug), env: { GUIDE_PROFILE: profileDir(app.slug) }, ...onThisMac(app),
+    cwd: appDir(app.slug), env: guideEnv(app), ...onThisMac(app),
     onDone: () => { if (!readRecorded(app.slug, guide)) throw new Error('No finished video was made') },
   })
 }
