@@ -86,4 +86,7 @@ test('the script check flags idle lines, fake clicks, long captions, length and 
   assert.equal(f.lines.L04, undefined)
   assert.equal(f.video.length, 2)
   assert.equal(f.count, 6)
+  // A kept flag stops being raised; the others stay.
+  const kept = C.checkScript([{ id: 'L01', screen: 'Click New.', voice: 'Click New.' }, { id: 'L02', screen: 'Cursor rests.', voice: 'Done.' }, { id: 'L03', screen: 'Customer view.', voice: 'Their view.' }], null, ['L02: Only the cursor moves here. Show something happening, or fold it into the line before.'])
+  assert.equal(kept.count, 0)
 })

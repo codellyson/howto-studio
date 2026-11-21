@@ -95,6 +95,19 @@ async function fixFlags() {
   await sendAsk()
 }
 
+// One flag at a time: the agent fixes only that line, or the person keeps the line as it is.
+async function fixOne(id: string, flag: string) {
+  ask.value = id === 'video' ? `${flag} Change as little as needed.` : `Line ${id}: ${flag} Fix only that line and keep the rest of the script as it is.`
+  await sendAsk()
+}
+async function keepOne(id: string, flag: string) {
+  problem.value = ''
+  try {
+    const c = await $fetch<NonNullable<Video['checks']>>(`${base}/keep`, { method: 'POST', body: { flag: `${id}: ${flag}` } })
+    if (video.value) video.value.checks = c
+  } catch (e) { problem.value = errorText(e) }
+}
+
 async function sendAsk() {
   if (!ask.value.trim()) return
   problem.value = ''
@@ -139,8 +152,11 @@ const shotMeta = computed(() => {
     <p v-if="error || problem || (video?.job?.state === 'error' && video.lines.length)" class="m-0 border-b border-line px-4 py-2 text-rec" role="alert">{{ problem || error || video?.job?.error }}</p>
     <div v-else-if="checks?.count && !working && video?.status !== 'done'" class="flex items-center gap-3 border-b border-line px-4 py-2" role="status">
       <span class="text-oneway">{{ checks.count === 1 ? '1 thing' : `${checks.count} things` }} to fix before filming.</span>
-      <span v-for="v in checks.video" :key="v" class="meta max-lg:hidden">{{ v }}</span>
-      <button type="button" class="btn btn-secondary ml-auto h-7" @click="fixFlags">Fix them</button>
+      <span v-for="v in checks.video" :key="v" class="meta flex items-center gap-1 max-lg:hidden">{{ v }}
+        <button type="button" class="btn btn-plain h-6 px-1.5 text-[12px] text-ink" @click="fixOne('video', v)">Fix</button>
+        <button type="button" class="btn btn-plain h-6 px-1.5 text-[12px]" @click="keepOne('video', v)">Keep</button>
+      </span>
+      <button type="button" class="btn btn-secondary ml-auto h-7" @click="fixFlags">Fix all</button>
     </div>
     <p v-else-if="video?.status === 'changed'" class="m-0 flex items-center gap-3 border-b border-line px-4 py-2 text-muted">
       The script changed after filming.{{ video.firstChanged && view?.restyle ? ` Line ${video.firstChanged.replace(/^L/, '')} is the first change; the lines before it can stay.` : ' Record again to update the video.' }}
@@ -180,7 +196,7 @@ const shotMeta = computed(() => {
           </form>
         </div>
         <template v-else-if="video && tab === 'script'">
-          <ScriptLines :lines="video.lines" :selected="selected" :one-way="oneWayLines" :flags="checks?.lines" :editable="!working" @select="selected = $event" @save="saveLine">
+          <ScriptLines :lines="video.lines" :selected="selected" :one-way="oneWayLines" :flags="checks?.lines" :editable="!working" @fix="fixOne" @keep="keepOne" @select="selected = $event" @save="saveLine">
             <template v-if="view?.restyle" #selected="{ id }">
               <div v-if="id !== video.lines[0]?.id" class="ml-[46px] pr-[10px] pb-2">
                 <button type="button" class="btn btn-plain h-7 px-2 text-[13px]" :disabled="working" @click="record(id)"><span class="rec-dot" />Film again from here</button>

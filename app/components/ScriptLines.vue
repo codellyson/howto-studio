@@ -9,7 +9,7 @@ const props = defineProps<{
   done?: number
   flags?: Record<string, string[]>
 }>()
-const emit = defineEmits<{ select: [id: string], save: [id: string, text: string] }>()
+const emit = defineEmits<{ select: [id: string], save: [id: string, text: string], fix: [id: string, flag: string], keep: [id: string, flag: string] }>()
 
 const list = ref<HTMLElement>()
 const box = reactive({ top: 0, height: 0, shown: false })
@@ -89,7 +89,13 @@ const num = (id: string) => id.replace(/^L/, '')
         <span v-if="oneWay?.includes(l.id)" class="mt-2 size-1.5 flex-none rounded-full bg-oneway" title="Can't be undone. Answered in the browser while filming." />
       </button>
       <ul v-if="flags?.[l.id]?.length && editing !== l.id" class="m-0 ml-[46px] flex list-none flex-col gap-0.5 p-0 pr-[10px] pb-1.5 font-sans text-[13px] leading-[1.35] text-oneway">
-        <li v-for="f in flags[l.id]" :key="f">{{ f }}</li>
+        <li v-for="f in flags[l.id]" :key="f" class="flex items-start gap-2">
+          <span class="min-w-0 flex-1">{{ f }}</span>
+          <span v-if="editable" class="flex flex-none gap-1">
+            <button type="button" class="btn btn-plain h-6 px-1.5 text-[12px] text-ink" :aria-label="`Fix line ${num(l.id)}: ${f}`" @click="emit('fix', l.id, f)">Fix</button>
+            <button type="button" class="btn btn-plain h-6 px-1.5 text-[12px] text-muted" :aria-label="`Keep line ${num(l.id)} as it is`" title="The line is right as it is. Stop flagging it." @click="emit('keep', l.id, f)">Keep</button>
+          </span>
+        </li>
       </ul>
       <slot v-if="l.id === selected && editing !== l.id" name="selected" :id="l.id" />
     </li>

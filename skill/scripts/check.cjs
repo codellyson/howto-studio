@@ -22,9 +22,10 @@ function readLines(file) {
 const withoutCursor = (screen) => screen.split(/(?<=\.)\s+/).filter((s) => !/^cursor\b/i.test(s.trim())).join(' ');
 
 // lines: [{ id, screen, voice }]. durations: { id: seconds } from the voice, when it has been made.
-function checkScript(lines, durations) {
+// kept: flags the person chose to keep, as "L05: <flag>" or "video: <flag>" (scripts/<guide>/kept.json).
+function checkScript(lines, durations, kept = []) {
   const flags = { lines: {}, video: [] };
-  const flag = (id, text) => (flags.lines[id] = flags.lines[id] || []).push(text);
+  const flag = (id, text) => { if (!kept.includes(`${id}: ${text}`)) (flags.lines[id] = flags.lines[id] || []).push(text); };
   lines.forEach((l, i) => {
     const screen = withoutCursor(l.screen);
     const acts = ACTION.test(screen) && !/not clicked/i.test(screen);
@@ -36,9 +37,10 @@ function checkScript(lines, durations) {
   });
   const known = lines.every((l) => durations && durations[l.id]);
   const seconds = lines.reduce((t, l) => t + (known ? durations[l.id] : l.voice.split(/\s+/).length / 2.6) + 0.35, 0);
-  if (seconds > MAX_SECONDS) flags.video.push(`${known ? '' : 'About '}${Math.round(seconds)} s long. Aim for 30 to 60: cut the lines where nothing happens first.`);
+  const video = (text) => { if (!kept.includes(`video: ${text}`)) flags.video.push(text); };
+  if (seconds > MAX_SECONDS) video(`${known ? '' : 'About '}${Math.round(seconds)} s long. Aim for 30 to 60: cut the lines where nothing happens first.`);
   const last = lines[lines.length - 1];
-  if (last && !OTHER_SIDE.test(`${last.screen} ${last.voice}`)) flags.video.push("It doesn't end on the result: show what changed, ideally as the customer, recipient or teammate sees it.");
+  if (last && !OTHER_SIDE.test(`${last.screen} ${last.voice}`)) video("It doesn't end on the result: show what changed, ideally as the customer, recipient or teammate sees it.");
   flags.count = flags.video.length + Object.values(flags.lines).reduce((n, f) => n + f.length, 0);
   flags.seconds = Math.round(seconds);
   return flags;
@@ -46,11 +48,13 @@ function checkScript(lines, durations) {
 
 module.exports = { checkScript, readLines };
 
+
 if (require.main === module) {
   const [project, guide] = process.argv.slice(2);
   const lines = readLines(path.join(project, 'scripts', guide, 'script.md'));
   const durFile = path.join(project, 'audio', guide, 'durations.json');
-  const flags = checkScript(lines, fs.existsSync(durFile) ? JSON.parse(fs.readFileSync(durFile, 'utf8')) : null);
+  const keptFile = path.join(project, 'scripts', guide, 'kept.json');
+  const flags = checkScript(lines, fs.existsSync(durFile) ? JSON.parse(fs.readFileSync(durFile, 'utf8')) : null, fs.existsSync(keptFile) ? JSON.parse(fs.readFileSync(keptFile, 'utf8')) : []);
   for (const [id, list] of Object.entries(flags.lines)) for (const t of list) console.log(`${id}: ${t}`);
   for (const t of flags.video) console.log(`Video: ${t}`);
   console.log(flags.count ? `${flags.count} to fix` : `No flags. About ${flags.seconds} s.`);

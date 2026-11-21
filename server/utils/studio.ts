@@ -132,13 +132,20 @@ export function listVideos(slug: string) {
 export const overlay = createRequire(import.meta.url)(join(SKILL, 'scripts', 'overlay.cjs'))
 const checker = createRequire(import.meta.url)(join(SKILL, 'scripts', 'check.cjs'))
 
+// Flags the person chose to keep ("L05: <flag>", "video: <flag>"), so the check stops raising them.
+const keptFile = (slug: string, guide: string) => join(appDir(slug), 'scripts', guide, 'kept.json')
+export function readKept(slug: string, guide: string): string[] {
+  try { return JSON.parse(readFileSync(keptFile(slug, guide), 'utf8')) } catch { return [] }
+}
+export const keepFlag = (slug: string, guide: string, flag: string) => writeFileSync(keptFile(slug, guide), JSON.stringify([...new Set([...readKept(slug, guide), flag])], null, 1) + '\n')
+
 export type Checks = { lines: Record<string, string[]>, video: string[], count: number, seconds: number }
 // The script rules, checked before filming. Uses the real voice lengths once the voice has been made.
 export function scriptChecks(slug: string, guide: string, lines: Line[]): Checks | null {
   if (!lines.length) return null
   let durations = null
   try { durations = JSON.parse(readFileSync(join(appDir(slug), 'audio', guide, 'durations.json'), 'utf8')) } catch {}
-  return checker.checkScript(lines, durations)
+  return checker.checkScript(lines, durations, readKept(slug, guide))
 }
 const cleanFile = (slug: string, guide: string) => join(appDir(slug), 'out', `${guide}.silent.mp4`)
 const planFile = (slug: string, guide: string) => join(appDir(slug), 'out', `${guide}.overlay.json`)
