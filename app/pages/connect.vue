@@ -93,14 +93,15 @@ const oneWay = computed(() => s.value?.saves.filter(x => x.oneWay).length ?? 0)
         </label>
         <template v-else>
           <label class="flex flex-col gap-1.5">
-            <span class="flex items-center gap-1.5"><PhTerminal :size="16" />Command that starts it</span>
+            <span class="flex items-center gap-1.5"><PhTerminal :size="16" />Dev command</span>
             <input v-model="start" required placeholder="pnpm dev" class="field font-mono text-[13px]">
           </label>
           <label class="flex flex-col gap-1.5">
             <span class="flex items-center gap-1.5"><PhDesktop :size="16" />Address on this Mac</span>
             <input v-model="localUrl" required type="url" placeholder="http://localhost:3000" class="field">
           </label>
-          <p class="meta m-0">The studio runs this command in the code folder before writing or filming, and stops it after. If something already answers at the address, that is used as it is.</p>
+          <p class="meta m-0">Videos show a production build, not the dev server: reading the code finds how to build and serve it, and the build runs again only when the code changes. This dev command is used only when there is no build. You can check both in Settings.</p>
+          <p class="meta m-0">If the app is deployed, a live or staging address is closer to what your users see. Prefer it when you have one.</p>
         </template>
         <button :disabled="sending" class="btn btn-primary mt-2 self-start">{{ sending ? 'Starting' : 'Read the code' }}</button>
       </form>

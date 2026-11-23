@@ -82,3 +82,22 @@ test('a package script is started on a free port, never on the saved one', async
   releaseLocal(app.slug)
   stale.close()
 })
+
+test('with build and serve commands, the production build is filmed, rebuilt only when the code changes', async () => {
+  const repo = mkdtempSync(join(tmpdir(), 'repo-'))
+  const { execSync } = await import('node:child_process')
+  execSync('git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init', { cwd: repo })
+  const app = { slug: 'local-prod', name: 'T', repo, site: 'http://localhost:47996', voice: 'Michael', fakeSaves: true, mode: 'local' as const, build: 'mkdir -p dist && date +%s%N >> ../builds.txt && echo built > dist/index.html', serve: 'exec python3 -m http.server {port} --directory dist' }
+  mkdirSync(appDir(app.slug), { recursive: true })
+  const steps: string[] = []
+  await ensureLocal(app, s => steps.push(s))
+  assert.equal((await (await fetch(app.site)).text()).trim(), 'built')
+  releaseLocal(app.slug)
+  await ensureLocal({ ...app }, s => steps.push(s))
+  releaseLocal(app.slug)
+  assert.equal(steps.filter(s => s.startsWith('Building')).length, 1)
+  writeFileSync(join(repo, 'change.txt'), 'x')
+  await ensureLocal({ ...app }, s => steps.push(s))
+  releaseLocal(app.slug)
+  assert.equal(steps.filter(s => s.startsWith('Building')).length, 2)
+})

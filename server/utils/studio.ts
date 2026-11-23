@@ -13,7 +13,7 @@ export const SAFE = /^[a-z0-9][a-z0-9-]{0,60}$/
 export type Save = { method: string, route: string, what: string, oneWay: boolean }
 export type Summary = { framework: string, clientRendered: boolean, signIn: string, signedInUrl: string, pages: string[], saves: Save[] }
 // mode 'local': the site is the app's dev server on this Mac, started with `start` in the repo when it isn't running.
-export type AppConfig = { slug: string, name: string, repo: string, site: string, voice: string, fakeSaves: boolean, mode?: 'live' | 'local', start?: string, summary?: Summary, signedIn?: boolean }
+export type AppConfig = { slug: string, name: string, repo: string, site: string, voice: string, fakeSaves: boolean, mode?: 'live' | 'local', start?: string, build?: string, serve?: string, summary?: Summary, signedIn?: boolean }
 export type Line = { id: string, screen: string, voice: string }
 export type Job = { kind: 'connect' | 'plan' | 'script' | 'change' | 'record' | 'signin' | 'render', state: 'working' | 'done' | 'error', steps: string[], error?: string, started: number, pid?: number, detached?: boolean }
 

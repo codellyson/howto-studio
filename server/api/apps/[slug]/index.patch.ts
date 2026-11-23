@@ -23,6 +23,10 @@ export default defineEventHandler(async (event) => {
     if (!start) throw createError({ statusCode: 400, statusMessage: 'Enter the command that starts the app, like pnpm dev' })
     app.start = start
   }
+  // Empty clears them, and the dev command is filmed instead.
+  for (const k of ['build', 'serve'] as const) {
+    if (body[k] !== undefined && app.mode === 'local') app[k] = String(body[k]).trim().slice(0, 400) || undefined
+  }
   if (app.mode === 'local' && !isLocalUrl(app.site)) throw createError({ statusCode: 400, statusMessage: 'On this Mac, the address must start with http://localhost' })
   writeApp(app)
   return app

@@ -1,11 +1,13 @@
-import { spawn } from 'node:child_process'
-import { existsSync, openSync, readFileSync } from 'node:fs'
+import { execSync, spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { existsSync, openSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { dirname, join } from 'node:path'
 import { appDir, readApp, writeApp, type AppConfig } from './studio.ts'
 
-// Filming an app on this Mac: the studio starts its own copy of the dev server on a free port for a job,
-// and stops it after. A start command with a fixed port uses the saved address, reusing a server already there.
+// Filming an app on this Mac: the studio starts its own copy of the app on a free port for a job, and stops it after.
+// With a build and serve command it films the production build, built again only when the code changed; otherwise
+// the dev server. A dev command with a fixed port uses the saved address, reusing a server already there.
 
 const DEFAULT_PORTS: [string, number][] = [['nuxt', 3000], ['next', 3000], ['astro', 4321], ['@sveltejs/kit', 5173], ['vite', 5173], ['@remix-run/dev', 3000], ['react-scripts', 3000], ['@angular/core', 4200], ['gatsby', 8000]]
 
@@ -86,6 +88,37 @@ function freePort() {
   })
 }
 
+// What the code looks like now: the commit plus uncommitted changes. A new build is needed when this changes.
+function codeStamp(repo: string) {
+  try {
+    const git = (c: string) => execSync(`git ${c}`, { cwd: repo, encoding: 'utf8', maxBuffer: 64e6, stdio: ['ignore', 'pipe', 'ignore'] })
+    return createHash('sha1').update(git('rev-parse HEAD') + git('diff HEAD') + git('ls-files --others --exclude-standard')).digest('hex')
+  } catch { return '' }
+}
+
+// Runs the build when the code changed since the last one. A folder that isn't a git repository builds every time.
+async function buildIfChanged(app: AppConfig, say: (step: string) => void) {
+  const stampFile = join(appDir(app.slug), 'build.stamp')
+  const stamp = codeStamp(app.repo)
+  if (stamp && existsSync(stampFile) && readFileSync(stampFile, 'utf8') === stamp) return
+  say(`Building the app: ${app.build}`)
+  const logFile = join(appDir(app.slug), 'build.log')
+  const log = openSync(logFile, 'w')
+  const child = spawn(process.env.SHELL || '/bin/zsh', ['-lc', app.build!], { cwd: app.repo, stdio: ['ignore', log, log] })
+  const code = await new Promise<number | null>((res) => {
+    const timer = setTimeout(() => child.kill('SIGTERM'), 10 * 60_000)
+    child.on('close', (c) => { clearTimeout(timer); res(c) })
+    child.on('error', () => { clearTimeout(timer); res(-1) })
+  })
+  if (code !== 0) {
+    const why = reason(logFile).replace(/\.$/, '')
+    throw new Error(`The build failed${why ? `: "${why.slice(0, 160)}"` : ''}. Its output is in build.log in the app's studio folder`)
+  }
+  // Taken after the build, so its own output (when not ignored by git) doesn't count as a change next time.
+  const after = codeStamp(app.repo)
+  if (after) writeFileSync(stampFile, after)
+}
+
 const running = new Map<string, { pid?: number, users: number, site: string }>()
 
 // Before a job: make sure the app answers at its address, starting it if needed (up to two minutes).
@@ -93,8 +126,11 @@ export async function ensureLocal(app: AppConfig, say: (step: string) => void) {
   if (app.mode !== 'local') return
   const held = running.get(app.slug)
   if (held) { held.users++; app.site = held.site; return }
-  const port = app.start ? await freePort() : 0
-  const command = app.start && portArgs(app.start, port)
+  const production = !!(app.build && app.serve)
+  const port = app.start || production ? await freePort() : 0
+  // shortcut: two jobs starting together for one app can build at once; fine while jobs for an app run one at a time.
+  if (production) await buildIfChanged(app, say)
+  const command = production ? app.serve!.replaceAll('{port}', String(port)) : app.start && portArgs(app.start, port)
   if (command) app.site = `http://localhost:${port}`
   else if (await answers(app.site)) {
     const broken = await brokenAt(app.site)
@@ -103,7 +139,7 @@ export async function ensureLocal(app: AppConfig, say: (step: string) => void) {
     running.set(app.slug, { users: 1, site: app.site })
     return
   }
-  if (!app.start) throw new Error(`Nothing answers at ${app.site}, and there is no command to start the app`)
+  if (!command && !app.start) throw new Error(`Nothing answers at ${app.site}, and there is no command to start the app`)
   say(`Starting the app: ${command || app.start}`)
   const logFile = join(appDir(app.slug), 'local.log')
   const log = openSync(logFile, 'w')

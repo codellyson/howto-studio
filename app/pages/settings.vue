@@ -1,20 +1,22 @@
 <script setup lang="ts">
 import { PhCode, PhDesktop, PhFolderOpen, PhGlobeSimple, PhTerminal, PhLockSimple, PhTrash, PhWaveform, PhCheck } from '@phosphor-icons/vue'
 
-type App = { slug: string, name: string, repo: string, site: string, mode?: 'live' | 'local', start?: string, voice: string, fakeSaves: boolean, signedIn?: boolean, summary?: { signIn: string } }
+type App = { slug: string, name: string, repo: string, site: string, mode?: 'live' | 'local', start?: string, build?: string, serve?: string, voice: string, fakeSaves: boolean, signedIn?: boolean, summary?: { signIn: string } }
 
 const route = useRoute()
 const apps = ref<App[] | null>(null)
 const current = computed(() => apps.value?.find(a => a.slug === route.query.app) ?? apps.value?.[0])
 const problem = ref('')
 const signin = ref<{ state: string, steps?: string[], error?: string } | null>(null)
-const editing = ref<'repo' | 'site' | 'start' | ''>('')
+type Field = 'repo' | 'site' | 'start' | 'build' | 'serve'
+const editing = ref<Field | ''>('')
 const draft = ref('')
 const confirmRemove = ref(false)
-// An app filmed on this Mac also has the command that starts it.
-const fields = computed(() => (current.value?.mode === 'local' ? ['repo', 'start', 'site'] : ['repo', 'site']) as ('repo' | 'site' | 'start')[])
-const LABELS = computed(() => ({ repo: 'Code folder', start: 'Command that starts it', site: current.value?.mode === 'local' ? 'Address on this Mac' : 'Site to film' }))
-const ICONS = computed(() => ({ repo: PhCode, start: PhTerminal, site: current.value?.mode === 'local' ? PhDesktop : PhGlobeSimple }))
+// An app filmed on this Mac also has the commands that build and serve its production version, and its dev command.
+const fields = computed(() => (current.value?.mode === 'local' ? ['repo', 'build', 'serve', 'start', 'site'] : ['repo', 'site']) as Field[])
+const LABELS = computed(() => ({ repo: 'Code folder', build: 'Production build', serve: 'Serve the build (on {port})', start: 'Dev command, used when there is no build', site: current.value?.mode === 'local' ? 'Address on this Mac' : 'Site to film' }))
+const ICONS = computed(() => ({ repo: PhCode, build: PhTerminal, serve: PhTerminal, start: PhTerminal, site: current.value?.mode === 'local' ? PhDesktop : PhGlobeSimple }))
+const EMPTY: Partial<Record<Field, string>> = { build: 'Not set. The dev server is filmed instead.', serve: 'Not set. The dev server is filmed instead.' }
 const VOICES = ['Michael', 'Adam', 'Heart', 'Bella', 'George', 'Emma']
 
 async function load() {
@@ -42,7 +44,7 @@ async function chooseRepo() {
   } catch (e) { problem.value = errorText(e) }
 }
 
-function edit(field: 'repo' | 'site' | 'start') {
+function edit(field: Field) {
   draft.value = current.value?.[field] ?? ''
   editing.value = field
 }
@@ -104,7 +106,7 @@ async function remove() {
               <button class="btn btn-primary">Save</button>
               <button type="button" class="btn btn-plain" @click="editing = ''">Cancel</button>
             </form>
-            <span v-else class="truncate text-[13px] text-muted" :class="{ 'font-mono': f === 'start' }">{{ current[f] }}</span>
+            <span v-else class="truncate text-[13px] text-muted" :class="{ 'font-mono': f !== 'repo' && f !== 'site' && current[f] }">{{ current[f] || EMPTY[f] }}</span>
           </div>
           <button v-if="editing !== f" type="button" class="btn btn-secondary" @click="edit(f)">Change</button>
         </div>

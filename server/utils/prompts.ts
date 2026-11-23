@@ -13,6 +13,8 @@ const SUMMARY_SCHEMA = {
     clientRendered: { type: 'boolean' },
     signIn: { type: 'string' },
     signedInUrl: { type: 'string' },
+    build: { type: 'string' },
+    serve: { type: 'string' },
     pages: { type: 'array', items: { type: 'string' } },
     saves: { type: 'array', items: { type: 'object', required: ['method', 'route', 'what', 'oneWay'], properties: { method: { type: 'string' }, route: { type: 'string' }, what: { type: 'string' }, oneWay: { type: 'boolean' } } } },
   },
@@ -31,7 +33,9 @@ Read the code (do not run anything) and report:
 - signIn: how users sign in, in one plain sentence (for example "Emailed 6-digit code, no password").
 - signedInUrl: a JavaScript regex source matching the site's URL once signed in (for example "/albums").
 - pages: the app's page routes, as paths.
-- saves: every endpoint below that changes data. what = what it does, in a few plain words. oneWay = true when it cannot be undone (approve, send, email, pay, delete, publish).
+${app.mode === 'local' ? `- build: the shell command, run from the repository root, that makes the production build ("" if there is none).
+- serve: the command, run from the repository root, that serves that production build on port {port}. Write {port} literally where the port goes; for a server that reads PORT, write the command as it is. Examples: "cd apps/web && npx wrangler dev .output/server/index.mjs --assets .output/public --port {port}", "pnpm start -- -p {port}", "node .output/server/index.mjs". "" if there is none.
+` : ''}- saves: every endpoint below that changes data. what = what it does, in a few plain words. oneWay = true when it cannot be undone (approve, send, email, pay, delete, publish).
 
 The write scanner found these:
 ${writes}`
@@ -39,8 +43,11 @@ ${writes}`
     cwd: app.repo, schema: SUMMARY_SCHEMA, readOnly: true,
     onDone: (out) => {
       if (!out || !Array.isArray(out.saves)) throw new Error('The code could not be summarised')
-      const { name, ...summary } = out
-      writeApp({ ...readApp(app.slug), ...(typeof name === 'string' && name.trim() ? { name: name.trim().slice(0, 60) } : {}), summary })
+      const { name, build, serve, ...summary } = out
+      const current = readApp(app.slug)
+      // A production build is filmed when both commands are known; the person's own commands are kept.
+      const prod = current.mode === 'local' && !current.serve && typeof build === 'string' && build.trim() && typeof serve === 'string' && serve.trim() ? { build: build.trim(), serve: serve.trim() } : {}
+      writeApp({ ...current, ...prod, ...(typeof name === 'string' && name.trim() ? { name: name.trim().slice(0, 60) } : {}), summary })
     },
   })
 }
