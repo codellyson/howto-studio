@@ -1,5 +1,5 @@
 # python3 voice.py <project> <guide> [voice]: one wav per script line in <project>/audio/<guide>/, plus durations.json.
-import json, os, subprocess, sys
+import json, os, re, subprocess, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lines import read
 
@@ -27,9 +27,18 @@ env.setdefault('HYPERFRAMES_PYTHON', os.path.expanduser('~/.cache/howto-video/kv
 made_file = os.path.join(out, 'made.json')
 made = json.load(open(made_file)) if os.path.exists(made_file) else {}
 old = json.load(open(os.path.join(out, 'durations.json'))) if os.path.exists(os.path.join(out, 'durations.json')) else {}
+# say.json in the project: how to say words the voice gets wrong, e.g. {"Khaime": "Kyme"}. Only the voice changes;
+# captions keep the real spelling.
+say_file = os.path.join(project, 'say.json')
+say = json.load(open(say_file)) if os.path.exists(say_file) else {}
+def spoken(text):
+    for word, sound in say.items():
+        text = re.sub(r'\b%s\b' % re.escape(word), sound, text)
+    return text
 durations, remade = {}, []
 for line_id, text in read(os.path.join(project, 'scripts', guide, 'script.md')):
     wav = os.path.join(out, line_id + '.wav')
+    text = spoken(text)
     if made.get(line_id) == [voice, text] and os.path.exists(wav) and line_id in old:
         durations[line_id] = old[line_id]
         continue
