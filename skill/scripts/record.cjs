@@ -198,7 +198,7 @@ function fromTake(take) {
     // recordVideo films one tab. The new tab closes and its address comes back, for t.visit off camera.
     clickLinkToNewTab: async (loc) => {
       const [opened] = await Promise.all([ctx.waitForEvent('page'), click(loc)]);
-      await opened.waitForURL((u) => u.href !== 'about:blank', { timeout: 30000 });
+      await opened.waitForURL((u) => u.href !== 'about:blank', { timeout: 30000, waitUntil: 'commit' }); // only the address; loading would stall the shot
       const url = opened.url();
       await opened.close();
       return url;
