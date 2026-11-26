@@ -91,16 +91,18 @@ export function startOutline(app: AppConfig, guide: string, task: string) {
   const s = app.summary
   const prompt = `Someone wants a short narrated how-to video of ${app.name}, the web app in this repository. Their request: "${task}"
 ${s ? `Pages: ${s.pages.join(', ')}. Sign-in: ${s.signIn}.` : ''}
-Read the code (do not run anything) and plan the video. A video shows one task, 30 to 60 seconds, for someone who is not technical.
+${isLive(app) ? `${liveFirst(app)} Run nothing else.` : 'Read the code (do not run anything).'} Then plan the video. A video shows one task, 30 to 60 seconds, for someone who is not technical.
 - clear: true when the request names one task and who it is for. Then return exactly one angle.
 - Otherwise clear is false: the request is a tour, a feature list or a vague goal. Return two or three different videos it could be, each one task, most useful first. One of them may be a short tour if that fits.
 Each angle:
 - title: the video's name, in a few words, starting with a verb where it can ("File your first request").
 - who: who watches, in a few words ("a new team member").
 - after: what they can do after watching, in one short sentence.
-- steps: what happens on screen, one short line each, 4 to 10 lines, in the app's own words. The first step already does something; never open on a page where nothing happens. Every step that says "click X" really clicks X. When the video switches to another person's view, that step says whose view it is and how it looks different. The last step shows the result from the other side (what the customer, recipient or teammate sees).`
+- steps: what happens on screen, one short line each, 4 to 10 lines, in the app's own words${isLive(app) ? ' as the live pages show them' : ''}. The first step already does something; never open on a page where nothing happens. Every step that says "click X" really clicks X. When the video switches to another person's view, that step says whose view it is and how it looks different. The last step shows the result from the other side (what the customer, recipient or teammate sees).`
   return runClaude(key(app.slug, guide), 'plan', prompt, {
     cwd: app.repo, schema: OUTLINE_SCHEMA, readOnly: true,
+    // A live site is read from its pages, so the outline may run the probe and nothing else.
+    ...(isLive(app) ? { env: guideEnv(app), tools: ['Read', 'Glob', 'Grep', 'Bash(node:*)'] } : {}),
     onDone: (out) => {
       const angles = (Array.isArray(out?.angles) ? out.angles : []).filter((a: any) => a?.title && Array.isArray(a.steps) && a.steps.length)
       if (!angles.length) throw new Error('No outline was written')
@@ -212,7 +214,7 @@ The invented data this video needs was prepared after the script was written (se
 
 Film this video now, following sections 2 to 5 for ${guide}:
 - Make the voice with voice "${VOICES[app.voice] ?? 'af_heart'}".
-- Write or update this video's function in takes.cjs, using the repository section and scripts/${guide}/notes.md.
+- Build the take from ${isLive(app) ? 'the live pages' : 'the repository section'} and scripts/${guide}/notes.md.
 - ${writes}
 - Record (up to three tries) and cut. The run is done when final/${guide}.mp4 and final/${guide}.lines.json exist.
 Then review the frame sheet as section 6 says, and add what you found to scripts/${guide}/notes.md. Do not write look.json: the person sets the look in the studio. Note look problems in notes.md instead.`

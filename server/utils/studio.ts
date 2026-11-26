@@ -381,7 +381,7 @@ const BASH = ['node', 'python3', 'pnpm', 'npx', 'ffmpeg', 'ffprobe', 'curl', 'ls
 const TOOLS = ['Read', 'Glob', 'Grep', 'Write', 'Edit', ...BASH.map(c => `Bash(${c}:*)`), 'Bash(GUIDE_PROFILE=:*)', 'Bash(for :*)', 'Bash(cd :*)']
 
 // Runs a headless Claude Code session and turns its tool calls into plain progress lines.
-export function runClaude(k: string, kind: Job['kind'], prompt: string | (() => string), opts: { cwd: string, env?: Record<string, string>, schema?: object, readOnly?: boolean, onDone?: (out: any) => void, before?: (say: (t: string) => void) => Promise<void>, after?: () => void }) {
+export function runClaude(k: string, kind: Job['kind'], prompt: string | (() => string), opts: { cwd: string, env?: Record<string, string>, schema?: object, readOnly?: boolean, tools?: string[], onDone?: (out: any) => void, before?: (say: (t: string) => void) => Promise<void>, after?: () => void }) {
   if (busy(k)) throw createError({ statusCode: 409, statusMessage: 'This is already running.' })
   const job: Job = { kind, state: 'working', steps: [], started: Date.now() }
   jobs.set(k, job)
@@ -402,8 +402,8 @@ export function runClaude(k: string, kind: Job['kind'], prompt: string | (() => 
   function launch() {
     const args = ['-p', '--model', modelFor(kind), '--output-format', 'stream-json', '--verbose', '--no-session-persistence', '--add-dir', SKILL]
     if (opts.schema) args.push('--json-schema', JSON.stringify(opts.schema))
-    args.push('--allowedTools', ...(opts.readOnly ? ['Read', 'Glob', 'Grep'] : TOOLS))
-    if (opts.readOnly) args.push('--disallowedTools', 'Bash', 'Edit', 'Write')
+    args.push('--allowedTools', ...(opts.tools ?? (opts.readOnly ? ['Read', 'Glob', 'Grep'] : TOOLS)))
+    if (opts.readOnly) args.push('--disallowedTools', ...(opts.tools ? ['Edit', 'Write'] : ['Bash', 'Edit', 'Write']))
     // Extended thinking made a script take 274 s instead of 164 s with scripts as good; filming keeps it.
     const thinking = kind === 'record' || kind === 'fakes' ? {} : { MAX_THINKING_TOKENS: '0' }
     const child = spawn('claude', args, { cwd: opts.cwd, env: { ...process.env, ...thinking, ...opts.env, HOWTO_STUDIO_CHILD: '1' }, detached: true })
@@ -413,6 +413,8 @@ export function runClaude(k: string, kind: Job['kind'], prompt: string | (() => 
     let result: any = null
     let failure = ''
     let lastText = ''
+    // Some runs answer through the StructuredOutput tool but end without structured_output on the result.
+    let structured: any = null
     child.stdout.on('data', (d) => {
       buf += d
       const lines = buf.split('\n')
@@ -421,10 +423,11 @@ export function runClaude(k: string, kind: Job['kind'], prompt: string | (() => 
         let ev: any
         try { ev = JSON.parse(line) } catch { continue }
         if (ev.type === 'result') {
-          result = ev.structured_output ?? ev.result
+          result = ev.structured_output ?? structured ?? ev.result
           if (ev.is_error) failure = String(ev.result ?? 'The agent stopped with an error')
         }
         for (const c of ev.type === 'assistant' ? ev.message?.content ?? [] : []) {
+          if (c.type === 'tool_use' && c.name === 'StructuredOutput') structured = c.input
           if (c.type === 'tool_use') say(describe(c.name, c.input ?? {}))
           if (c.type === 'text' && c.text?.trim()) lastText = c.text.trim()
         }
