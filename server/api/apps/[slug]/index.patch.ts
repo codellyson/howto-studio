@@ -9,6 +9,7 @@ export default defineEventHandler(async (event) => {
     if (!VOICES[body.voice]) throw createError({ statusCode: 400, statusMessage: 'Unknown voice' })
     app.voice = body.voice
   }
+  if ((body as any).say !== undefined) writeSay(app.slug, (body as any).say ?? {})
   if (body.fakeSaves !== undefined) app.fakeSaves = !!body.fakeSaves
   if (body.repo !== undefined) {
     const repo = resolve(String(body.repo).trim().replace(/^~(?=\/|$)/, homedir()))
@@ -29,5 +30,5 @@ export default defineEventHandler(async (event) => {
   }
   if (app.mode === 'local' && !isLocalUrl(app.site)) throw createError({ statusCode: 400, statusMessage: 'On this Mac, the address must start with http://localhost' })
   writeApp(app)
-  return app
+  return { ...app, say: readSay(app.slug) }
 })

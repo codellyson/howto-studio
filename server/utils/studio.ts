@@ -1,5 +1,5 @@
 import { spawn, execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { createRequire } from 'node:module'
 import { basename, join, resolve } from 'node:path'
@@ -18,7 +18,7 @@ export type Summary = { framework: string, clientRendered: boolean, signIn: stri
 // mode 'local': the site is the app's dev server on this Mac, started with `start` in the repo when it isn't running.
 export type AppConfig = { slug: string, name: string, repo: string, site: string, voice: string, fakeSaves: boolean, mode?: 'live' | 'local', start?: string, build?: string, serve?: string, summary?: Summary, signedIn?: boolean }
 export type Line = { id: string, screen: string, voice: string }
-export type Job = { kind: 'connect' | 'plan' | 'script' | 'fakes' | 'change' | 'record' | 'signin' | 'render', state: 'working' | 'done' | 'error', steps: string[], at?: number[], error?: string, started: number, ended?: number, pid?: number, detached?: boolean }
+export type Job = { kind: 'connect' | 'plan' | 'script' | 'fakes' | 'change' | 'record' | 'remake' | 'signin' | 'render', state: 'working' | 'done' | 'error', steps: string[], at?: number[], error?: string, started: number, ended?: number, pid?: number, detached?: boolean }
 
 export const appDir = (slug: string) => join(HOME, 'apps', slug)
 export const profileDir = (slug: string) => join(HOME, 'profiles', slug)
@@ -58,6 +58,23 @@ export function removeApp(slug: string) {
   renameSync(appDir(slug), join(HOME, 'apps', `.removed-${slug}-${Date.now()}`))
 }
 
+// Deleting a video keeps its files too: everything of it moves to apps/<slug>/.removed/<guide>-<time>/.
+export function removeVideo(slug: string, guide: string) {
+  const dir = appDir(slug)
+  const bin = join(dir, '.removed', `${guide}-${Date.now()}`)
+  mkdirSync(bin, { recursive: true })
+  // Not by prefix alone: "foo" must not take "foo-2"'s files.
+  const mine = (f: string) => f === guide || f.startsWith(`${guide}.`) || f === `${guide}-sheet.png` || f === `${guide}-error.png` || f === `drive-${guide}.log`
+  for (const sub of ['scripts', 'audio', 'final', 'out']) {
+    if (!existsSync(join(dir, sub))) continue
+    for (const f of readdirSync(join(dir, sub)).filter(mine)) {
+      mkdirSync(join(bin, sub), { recursive: true })
+      renameSync(join(dir, sub, f), join(bin, sub, f))
+    }
+  }
+  jobs.remove(key(slug, guide))
+}
+
 // ---- Scripts ----
 
 const scriptFile = (slug: string, guide: string) => join(appDir(slug), 'scripts', guide, 'script.md')
@@ -73,6 +90,18 @@ export function readScript(slug: string, guide: string): { title: string, lines:
     return { id: cells[0]!, screen: cells[1] ?? '', voice: cells.at(-1) ?? '' }
   })
   return { title, lines }
+}
+
+// The title is the last part of the script's "# Product / Task" heading.
+export function setTitle(slug: string, guide: string, title: string) {
+  const clean = title.replace(/[\n\r#]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120)
+  if (!clean) throw createError({ statusCode: 400, statusMessage: 'A video needs a name' })
+  const f = scriptFile(slug, guide)
+  const text = readFileSync(f, 'utf8')
+  const head = text.match(/^#\s+(.+)$/m)
+  writeFileSync(f, head
+    ? text.replace(head[0], `# ${head[1]!.includes(' / ') ? `${head[1]!.split(' / ').slice(0, -1).join(' / ')} / ` : ''}${clean}`)
+    : `# ${clean}\n\n${text}`)
 }
 
 export function setLineVoice(slug: string, guide: string, id: string, voice: string) {
@@ -108,7 +137,7 @@ export const writeOutline = (slug: string, guide: string, o: Outline) => writeFi
 
 export function videoStatus(slug: string, guide: string) {
   const job = jobs.get(key(slug, guide))
-  if (job?.state === 'working') return job.kind === 'record' ? 'recording' : job.kind === 'render' ? 'rendering' : job.kind === 'plan' ? 'planning' : job.kind === 'fakes' ? 'preparing' : 'writing'
+  if (job?.state === 'working') return job.kind === 'record' || job.kind === 'remake' ? 'recording' : job.kind === 'render' ? 'rendering' : job.kind === 'plan' ? 'planning' : job.kind === 'fakes' ? 'preparing' : 'writing'
   const script = scriptFile(slug, guide)
   if (!existsSync(script)) {
     if (job?.state === 'error') return 'failed'
@@ -232,23 +261,7 @@ export function frameFile(slug: string, guide: string, id: string) {
 
 // Draws the look and marks onto the clean take again. No agent: the skill's cut.py --redress.
 export function startRender(slug: string, guide: string) {
-  const k = key(slug, guide)
-  if (busy(k)) throw createError({ statusCode: 409, statusMessage: 'This is already running.' })
-  const job: Job = { kind: 'render', state: 'working', steps: ['Drawing the captions and cursor'], started: Date.now() }
-  jobs.set(k, job)
-  const child = spawn('python3', [join(SKILL, 'scripts', 'cut.py'), appDir(slug), guide, '--redress'], { cwd: appDir(slug) })
-  job.pid = child.pid
-  jobs.save(k, job)
-  let stderr = ''
-  child.stderr.on('data', (d) => { stderr = (stderr + d).slice(-2000) })
-  child.on('error', (e) => { job.state = 'error'; job.error = `Could not start python3: ${e.message}`; jobs.save(k, job) })
-  child.on('close', (code) => {
-    if (job.state === 'error') return
-    job.state = code === 0 ? 'done' : 'error'
-    if (code !== 0) job.error = `The video could not be made again. ${stderr.trim().split('\n').at(-1) ?? ''}`.trim()
-    jobs.save(k, job)
-  })
-  return job
+  return runSteps(key(slug, guide), 'render', [{ say: 'Drawing the captions and cursor', cmd: 'python3', args: [join(SKILL, 'scripts', 'cut.py'), appDir(slug), guide, '--redress'] }], { cwd: appDir(slug), failure: 'The video could not be made again.' })
 }
 
 // ---- Jobs: one claude -p run per app or video at a time ----
@@ -274,7 +287,7 @@ export const jobs = {
         if (disk.state !== 'working') { memory.set(k, disk); return disk }
       } catch {}
       const [slug, guide] = k.split('/') as [string, string]
-      const made = job.kind === 'record' || job.kind === 'render' ? !!readRecorded(slug, guide)
+      const made = job.kind === 'record' || job.kind === 'remake' || job.kind === 'render' ? !!readRecorded(slug, guide)
         : job.kind === 'script' ? readScript(slug, guide).lines.length > 0
           : job.kind === 'plan' ? !!readOutline(slug, guide)
             : job.kind === 'fakes' ? true
@@ -294,7 +307,67 @@ export const jobs = {
     if (job.state !== 'working' && !job.ended) job.ended = Date.now()
     writeFileSync(jobFile(k), JSON.stringify({ ...job, detached: true }))
   },
+  remove(k: string) {
+    memory.delete(k)
+    rmSync(jobFile(k), { force: true })
+  },
   entries: () => memory.entries(),
+}
+
+// Stops a running job and everything it started. Its process leads its own group, so one signal reaches the
+// agent, the take it runs and the browser; the take's driver (drive.cjs serve) runs apart, so it is stopped by name.
+export function stopJob(k: string) {
+  const job = jobs.get(k)
+  if (job?.state !== 'working') throw createError({ statusCode: 409, statusMessage: 'Nothing is running' })
+  job.state = 'error'
+  job.error = 'Stopped.'
+  jobs.save(k, job)
+  if (job.pid) { try { process.kill(-job.pid, 'SIGTERM') } catch { try { process.kill(job.pid, 'SIGTERM') } catch {} } }
+  const guide = k.split('/')[1]
+  if (guide && SAFE.test(guide)) spawn('pkill', ['-TERM', '-f', `drive\\.cjs \\S+ ${guide} serve`]).on('error', () => {})
+  return job
+}
+
+// Runs commands one after another as a job, without an agent. Each step shows as one progress line.
+export type Step = { say: string, cmd: string, args: string[], tries?: number }
+export function runSteps(k: string, kind: Job['kind'], steps: Step[], opts: { cwd: string, env?: Record<string, string>, failure: string, before?: (say: (t: string) => void) => Promise<void>, after?: () => void }) {
+  if (busy(k)) throw createError({ statusCode: 409, statusMessage: 'This is already running.' })
+  const job: Job = { kind, state: 'working', steps: [], at: [], started: Date.now() }
+  jobs.set(k, job)
+  const say = (t: string) => { job.steps = [...job.steps, t]; job.at = [...(job.at ?? []), Date.now()]; jobs.save(k, job) }
+  const run = (st: Step) => new Promise<string>((done) => {
+    const child = spawn(st.cmd, st.args, { cwd: opts.cwd, env: { ...process.env, ...opts.env }, detached: true })
+    job.pid = child.pid
+    jobs.save(k, job)
+    let err = ''
+    child.stdout.on('data', () => {})
+    child.stderr.on('data', (d) => { err = (err + d).slice(-2000) })
+    child.on('error', (e) => done(`Could not start ${st.cmd}: ${e.message}`))
+    child.on('close', (code) => done(code === 0 ? '' : err.trim().split('\n').at(-1) || `${st.cmd} exited with code ${code}`))
+  })
+  ;(async () => {
+    try {
+      await opts.before?.(say)
+      for (const st of steps) {
+        say(st.say)
+        let problem = ''
+        for (let i = 0; i < (st.tries ?? 1); i++) {
+          if (job.state !== 'working') return
+          problem = await run(st)
+          if (!problem) break
+        }
+        if (job.state !== 'working') return
+        if (problem) throw new Error(problem)
+      }
+      job.state = 'done'
+    } catch (e: any) {
+      if (job.state === 'working') { job.state = 'error'; job.error = `${opts.failure} ${e.message ?? ''}`.trim() }
+    } finally {
+      jobs.save(k, job)
+      opts.after?.()
+    }
+  })()
+  return job
 }
 
 // Jobs left by a previous run of the studio are loaded once, so a delete or a new run sees them.
@@ -333,7 +406,7 @@ export function runClaude(k: string, kind: Job['kind'], prompt: string | (() => 
     if (opts.readOnly) args.push('--disallowedTools', 'Bash', 'Edit', 'Write')
     // Extended thinking made a script take 274 s instead of 164 s with scripts as good; filming keeps it.
     const thinking = kind === 'record' || kind === 'fakes' ? {} : { MAX_THINKING_TOKENS: '0' }
-    const child = spawn('claude', args, { cwd: opts.cwd, env: { ...process.env, ...thinking, ...opts.env, HOWTO_STUDIO_CHILD: '1' } })
+    const child = spawn('claude', args, { cwd: opts.cwd, env: { ...process.env, ...thinking, ...opts.env, HOWTO_STUDIO_CHILD: '1' }, detached: true })
     job.pid = child.pid
     jobs.save(k, job)
     let buf = ''
@@ -361,7 +434,7 @@ export function runClaude(k: string, kind: Job['kind'], prompt: string | (() => 
     child.stderr.on('data', (d) => { stderr = (stderr + d).slice(-2000) })
     child.on('error', (e) => { fail(`Could not start claude: ${e.message}`) })
     child.on('close', (code) => {
-      if (job.state === 'error') return
+      if (job.state === 'error') { if (job.error === 'Stopped.') opts.after?.(); return }
       if (code !== 0 || failure) {
         job.state = 'error'
         job.error = failure || stderr.trim().split('\n').at(-1) || `claude exited with code ${code}`

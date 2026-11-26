@@ -22,6 +22,7 @@ export default defineEventHandler((event) => {
     task: existsSync(taskFile) ? readFileSync(taskFile, 'utf8') : guide.replace(/-/g, ' '),
     oneWay: (app.summary?.saves ?? []).filter(s => s.oneWay),
     overlay: overlayView(app.slug, guide),
+    canRemake: takeSaved(app.slug, guide),
     job: jobs.get(key(app.slug, guide)) ?? null,
   }
 })

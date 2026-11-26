@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PhArrowClockwise, PhChatCircle, PhPlay } from '@phosphor-icons/vue'
+import { PhArrowClockwise, PhChatCircle, PhPencilSimple, PhPlay, PhTrash } from '@phosphor-icons/vue'
 import type { Pin } from '~/components/PinsEditor.vue'
 
 const { slug, guide, base, data: video, error, load, frame, lengths, oneWayLines } = useVideo()
@@ -118,6 +118,38 @@ async function sendAsk() {
   } catch (e) { problem.value = errorText(e) }
 }
 
+// Quick: the saved take replayed with the current voice and pronunciations, no agent.
+async function remake() {
+  confirmRecord.value = false
+  problem.value = ''
+  try {
+    await $fetch(`${base}/remake`, { method: 'POST' })
+    await navigateTo(`/apps/${slug}/v/${guide}/record`)
+  } catch (e) { problem.value = errorText(e) }
+}
+
+const renaming = ref(false)
+const newTitle = ref('')
+function startRename() { newTitle.value = video.value?.title ?? ''; renaming.value = true }
+async function rename() {
+  problem.value = ''
+  try {
+    const r = await $fetch<{ title: string }>(base, { method: 'PATCH', body: { title: newTitle.value } })
+    if (video.value) video.value.title = r.title
+    renaming.value = false
+  } catch (e) { problem.value = errorText(e); renaming.value = false }
+}
+
+const confirmDelete = ref(false)
+async function remove() {
+  confirmDelete.value = false
+  problem.value = ''
+  try {
+    await $fetch(base, { method: 'DELETE' })
+    await navigateTo(`/apps/${slug}`)
+  } catch (e) { problem.value = errorText(e) }
+}
+
 async function record(from?: string) {
   confirmRecord.value = false
   problem.value = ''
@@ -142,6 +174,8 @@ const shotMeta = computed(() => {
         <PhChatCircle :size="16" class="pointer-events-none absolute top-2 left-3 text-muted" />
         <input id="ask" v-model="ask" :disabled="working" placeholder="Ask for a change…" class="field w-[280px] pl-9 disabled:opacity-40">
       </form>
+      <button v-if="video?.lines.length" type="button" class="btn btn-plain btn-icon" aria-label="Rename the video" title="Rename" :disabled="working" @click="startRename"><PhPencilSimple :size="16" /></button>
+      <button type="button" class="btn btn-plain btn-icon" aria-label="Delete the video" title="Delete" :disabled="working" @click="confirmDelete = true"><PhTrash :size="16" /></button>
       <button v-if="video?.notes" type="button" class="btn btn-plain" :aria-expanded="showNotes" @click="showNotes = !showNotes">Notes</button>
       <NuxtLink v-if="video?.recorded" :to="`/apps/${slug}/v/${guide}/review`" class="btn btn-secondary"><PhPlay :size="16" />Watch</NuxtLink>
       <button type="button" class="btn btn-primary" :disabled="working || !video?.lines.length" @click="video?.recorded ? (confirmRecord = true) : record()">
@@ -162,7 +196,7 @@ const shotMeta = computed(() => {
       The script changed after filming.{{ video.firstChanged && view?.restyle ? ` Line ${video.firstChanged.replace(/^L/, '')} is the first change; the lines before it can stay.` : ' Record again to update the video.' }}
       <button v-if="video.firstChanged && view?.restyle" type="button" class="btn btn-secondary ml-auto h-7" @click="record(video.firstChanged)">Film from line {{ video.firstChanged.replace(/^L/, '') }}</button>
     </p>
-    <div v-else-if="working && video?.job && video.lines.length" class="border-b border-line px-4 py-2"><JobProgress compact :job="video.job" /></div>
+    <div v-else-if="working && video?.job && video.lines.length" class="border-b border-line px-4 py-2"><JobProgress compact :job="video.job" :stop-url="`${base}/stop`" @stopped="load" /></div>
     <p v-else-if="view?.stale" class="m-0 flex items-center gap-3 border-b border-line px-4 py-2 text-muted">The look or marks changed. The video still has the old ones.<button type="button" class="btn btn-secondary h-7" @click="restyle">Make the video again</button></p>
 
     <div class="flex min-h-0 flex-1">
@@ -184,7 +218,7 @@ const shotMeta = computed(() => {
         </template>
         <div v-if="video && !video.lines.length" class="flex flex-col gap-2 p-4" aria-live="polite">
           <OutlinePicker v-if="picking" :outline="video.outline!" :busy="working" @choose="choose" @redo="redo = true" />
-          <JobProgress v-else-if="video.job && !redo" :job="video.job" />
+          <JobProgress v-else-if="video.job && !redo" :job="video.job" :stop-url="`${base}/stop`" @stopped="load" />
           <p v-else-if="!redo" class="m-0 font-medium">No script yet</p>
           <form v-if="!working && (video.job?.state === 'error' || redo)" class="mt-4 flex flex-col gap-2" @submit.prevent="retryAndClose">
             <label for="retry-task" class="font-medium">What the video should show</label>
@@ -223,8 +257,21 @@ const shotMeta = computed(() => {
     <aside v-if="showNotes && video?.notes" class="land fixed top-[60px] right-4 z-10 max-h-[70vh] w-[420px] overflow-auto border border-ink bg-page p-4 text-[13px] whitespace-pre-wrap" aria-label="Notes from reading the code">{{ video.notes }}</aside>
 
     <ConfirmDialog
-      :open="confirmRecord" title="Record this video again?" body="The current video is replaced when the new one is done."
-      action="Record again" @confirm="record()" @cancel="confirmRecord = false"
+      :open="confirmRecord" title="Record this video again?"
+      :body="video?.canRemake
+        ? 'Remake replays the saved take with the current voice and pronunciations, in about 2 minutes. Record again rebuilds the take from the page, for when the clicks changed. The current video is replaced when the new one is done.'
+        : 'The current video is replaced when the new one is done.'"
+      :action="video?.canRemake ? 'Remake' : 'Record again'" :alt="video?.canRemake ? 'Record again' : undefined"
+      @confirm="video?.canRemake ? remake() : record()" @alt="record()" @cancel="confirmRecord = false"
+    />
+    <ConfirmDialog :open="renaming" title="Rename the video" action="Rename" @confirm="rename" @cancel="renaming = false">
+      <label for="title" class="sr-only">Name</label>
+      <input id="title" v-model="newTitle" maxlength="120" class="field w-full" @keydown.enter.prevent="rename">
+    </ConfirmDialog>
+    <ConfirmDialog
+      :open="confirmDelete" :title="`Delete “${video?.title ?? guide}”?`" danger action="Delete"
+      body="It leaves the studio. Its files are kept on disk in the app's .removed folder, so it can be found by hand."
+      @confirm="remove" @cancel="confirmDelete = false"
     />
   </div>
 </template>

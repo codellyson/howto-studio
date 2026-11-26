@@ -17,6 +17,16 @@ except ImportError:
     kokoro_onnx = None
 kokoro = kokoro_onnx.Kokoro(MODEL, VOICES) if kokoro_onnx and os.path.exists(MODEL) and os.path.exists(VOICES) else None
 
+# python3 voice.py --sample "<words>" <voice> <out.wav>: one short clip, to hear a voice or a pronunciation.
+if sys.argv[1] == '--sample':
+    text, voice, wav = sys.argv[2], sys.argv[3], sys.argv[4]
+    if kokoro:
+        samples, rate = kokoro.create(text, voice=voice, speed=1.0, lang='en-us')
+        soundfile.write(wav, samples, rate)
+    else:
+        subprocess.check_call(['pnpm', 'dlx', 'hyperframes@latest', 'tts', text, '-v', voice, '-o', wav], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+    sys.exit(0)
+
 project, guide = sys.argv[1], sys.argv[2]
 voice = sys.argv[3] if len(sys.argv) > 3 else 'af_heart'
 out = os.path.abspath(os.path.join(project, 'audio', guide))

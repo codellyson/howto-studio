@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { PhCode, PhDesktop, PhFolderOpen, PhGlobeSimple, PhTerminal, PhLockSimple, PhTrash, PhWaveform, PhCheck } from '@phosphor-icons/vue'
+import { PhCode, PhDesktop, PhFolderOpen, PhGlobeSimple, PhTerminal, PhLockSimple, PhTrash, PhWaveform, PhCheck, PhSpeakerHigh, PhX } from '@phosphor-icons/vue'
 
-type App = { slug: string, name: string, repo: string, site: string, mode?: 'live' | 'local', start?: string, build?: string, serve?: string, voice: string, fakeSaves: boolean, signedIn?: boolean, summary?: { signIn: string } }
+type App = { slug: string, name: string, repo: string, site: string, mode?: 'live' | 'local', start?: string, build?: string, serve?: string, voice: string, say?: Record<string, string>, fakeSaves: boolean, signedIn?: boolean, summary?: { signIn: string } }
 
 const route = useRoute()
 const apps = ref<App[] | null>(null)
@@ -53,6 +53,32 @@ async function commit() {
   if (!field) return
   if (draft.value.trim() === current.value?.[field]) { editing.value = ''; return }
   if (await save({ [field]: draft.value.trim() })) editing.value = ''
+}
+
+// Pronunciations: how the voice says a word, kept per app. Captions keep the real spelling.
+const word = ref('')
+const sound = ref('')
+const hearing = ref('')
+let clip: HTMLAudioElement | undefined
+async function hear(text: string) {
+  if (!current.value || !text.trim()) return
+  problem.value = ''
+  hearing.value = text
+  try {
+    const blob = await $fetch<Blob>(`/api/apps/${current.value.slug}/say`, { method: 'POST', body: { text }, responseType: 'blob' })
+    clip?.pause()
+    clip = new Audio(URL.createObjectURL(blob))
+    await clip.play()
+  } catch (e) { problem.value = errorText(e) } finally { hearing.value = '' }
+}
+async function addSay() {
+  if (!word.value.trim() || !sound.value.trim()) return
+  if (await save({ say: { ...current.value?.say, [word.value.trim()]: sound.value.trim() } })) { word.value = ''; sound.value = '' }
+}
+async function dropSay(w: string) {
+  const say = { ...current.value?.say }
+  delete say[w]
+  await save({ say })
 }
 
 let timer: ReturnType<typeof setTimeout> | undefined
@@ -138,6 +164,29 @@ async function remove() {
           <select id="voice" :value="current.voice" class="field pr-8" @change="save({ voice: ($event.target as HTMLSelectElement).value })">
             <option v-for="v in VOICES" :key="v">{{ v }}</option>
           </select>
+        </div>
+
+        <div class="flex flex-col gap-3 border-b border-line py-4">
+          <div class="flex items-center gap-4">
+            <PhSpeakerHigh :size="16" class="flex-none" />
+            <div class="flex min-w-0 flex-1 flex-col"><span>Pronunciations</span><span class="text-[13px] text-muted">Words the voice says wrong, spelt the way they sound. Captions keep the real spelling. Remake a video to hear it there.</span></div>
+          </div>
+          <ul v-if="Object.keys(current.say ?? {}).length" class="m-0 ml-8 flex list-none flex-col p-0">
+            <li v-for="(v, w) in current.say" :key="w" class="flex h-9 items-center gap-3 text-[14px]">
+              <span class="w-40 truncate font-medium">{{ w }}</span>
+              <span class="min-w-0 flex-1 truncate text-muted">said “{{ v }}”</span>
+              <button type="button" class="btn btn-plain btn-icon h-7 w-7" :aria-label="`Hear ${w}`" title="Hear it" :disabled="!!hearing" @click="hear(v)"><PhSpeakerHigh :size="14" /></button>
+              <button type="button" class="btn btn-plain btn-icon h-7 w-7" :aria-label="`Remove ${w}`" title="Remove" @click="dropSay(String(w))"><PhX :size="14" /></button>
+            </li>
+          </ul>
+          <form class="ml-8 flex flex-wrap gap-2" @submit.prevent="addSay">
+            <label for="say-word" class="sr-only">Word</label>
+            <input id="say-word" v-model="word" maxlength="40" placeholder="Word, e.g. Khaime" class="field w-40">
+            <label for="say-sound" class="sr-only">Said as</label>
+            <input id="say-sound" v-model="sound" maxlength="60" placeholder="Said as, e.g. Kai-mee" class="field min-w-0 flex-1">
+            <button type="button" class="btn btn-secondary" :disabled="!sound.trim() || !!hearing" @click="hear(sound)"><PhSpeakerHigh :size="16" />{{ hearing === sound && sound ? 'Playing' : 'Hear' }}</button>
+            <button class="btn btn-primary" :disabled="!word.trim() || !sound.trim()">Add</button>
+          </form>
         </div>
 
         <p v-if="problem || signin?.state === 'error'" class="m-0 mt-4 text-rec" role="alert">{{ problem || signin?.error }}</p>

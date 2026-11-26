@@ -215,3 +215,28 @@ Then review the frame sheet as section 6 says, and add what you found to scripts
     onDone: () => { if (!readRecorded(app.slug, guide)) throw new Error('No finished video was made') },
   })
 }
+
+// Films the saved take again with no agent: new voice, same steps. For a changed voice, pronunciation or wording
+// that doesn't change what is clicked. About two minutes instead of a full filming run.
+export const takeSaved = (slug: string, guide: string) => existsSync(join(appDir(slug), 'scripts', guide, 'take.json'))
+export function startRemake(app: AppConfig, guide: string) {
+  const s = (name: string) => join(SKILL, 'scripts', name)
+  return runSteps(key(app.slug, guide), 'remake', [
+    { say: 'Making the voice', cmd: 'python3', args: [s('voice.py'), '.', guide, VOICES[app.voice] ?? 'af_heart'] },
+    { say: 'Filming the saved take', cmd: 'node', args: [s('record.cjs'), '.', guide], tries: 3 },
+    { say: 'Cutting and checking the video', cmd: 'python3', args: [s('cut.py'), '.', guide] },
+  ], { cwd: appDir(app.slug), env: guideEnv(app), failure: 'The saved take did not run. Record again to rebuild it.', ...onThisMac(app) })
+}
+
+// Pronunciations: <app>/say.json maps a word to how the voice should say it. Captions keep the real spelling.
+const sayFile = (slug: string) => join(appDir(slug), 'say.json')
+export function readSay(slug: string): Record<string, string> {
+  try { return JSON.parse(readFileSync(sayFile(slug), 'utf8')) } catch { return {} }
+}
+export function writeSay(slug: string, say: Record<string, unknown>) {
+  const clean = Object.fromEntries(Object.entries(say)
+    .map(([w, v]) => [String(w).trim().slice(0, 40), String(v).replace(/[|\n\r]/g, ' ').trim().slice(0, 60)])
+    .filter(([w, v]) => /^[\p{L}\p{N}][\p{L}\p{N}' .-]*$/u.test(w!) && v))
+  writeFileSync(sayFile(slug), JSON.stringify(clean, null, 2) + '\n')
+  return clean
+}

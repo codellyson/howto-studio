@@ -21,6 +21,7 @@ export type Video = {
   notes: string
   task: string
   firstChanged: string | null
+  canRemake?: boolean
   checks: { lines: Record<string, string[]>, video: string[], count: number, seconds: number } | null
   outline: { task: string, clear: boolean, angles: { title: string, who: string, after: string, steps: string[] }[], chosen: object | null } | null
   job: { kind: string, state: string, steps: string[], error?: string, started?: number } | null

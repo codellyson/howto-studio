@@ -1,9 +1,17 @@
 <script setup lang="ts">
 // One way to show an agent job everywhere: what is running, for how long, the steps done, and where it stopped.
-import { PhCheck, PhCircleNotch, PhWarningCircle, PhX } from '@phosphor-icons/vue'
+import { PhCheck, PhCircleNotch, PhStop, PhWarningCircle, PhX } from '@phosphor-icons/vue'
 
 export type JobView = { kind: string, state: string, steps: string[], at?: number[], error?: string, started?: number, ended?: number }
-const props = defineProps<{ job: JobView, compact?: boolean }>()
+// With `stopUrl`, a running job shows Stop.
+const props = defineProps<{ job: JobView, compact?: boolean, stopUrl?: string }>()
+const emit = defineEmits<{ stopped: [] }>()
+const stopping = ref(false)
+async function stop() {
+  if (!props.stopUrl) return
+  stopping.value = true
+  try { await $fetch(props.stopUrl, { method: 'POST' }); emit('stopped') } catch {} finally { stopping.value = false }
+}
 
 const TITLES: Record<string, [string, string]> = {
   connect: ['Reading the code', 'Code read'],
@@ -13,13 +21,14 @@ const TITLES: Record<string, [string, string]> = {
   change: ['Changing the script', 'Script changed'],
   record: ['Filming', 'Filmed'],
   render: ['Making the video again', 'Video made again'],
+  remake: ['Remaking from the saved take', 'Remade'],
   signin: ['Waiting for sign-in', 'Signed in'],
 }
 const working = computed(() => props.job.state === 'working')
 const failed = computed(() => props.job.state === 'error')
 const title = computed(() => {
   const [doing, done] = TITLES[props.job.kind] ?? ['Working', 'Done']
-  return failed.value ? `${doing} stopped` : working.value ? doing : done
+  return failed.value ? (props.job.error === 'Stopped.' ? 'Stopped' : `${doing} stopped`) : working.value ? doing : done
 })
 const steps = computed(() => props.job.steps.slice(-6))
 
@@ -51,6 +60,7 @@ const took = computed(() => {
     <span class="flex-none font-medium">{{ title }}</span>
     <span v-if="steps.length && working" class="min-w-0 truncate text-muted">· {{ steps.at(-1) }}</span>
     <span v-if="working && elapsed" class="meta flex-none tabular-nums">{{ elapsed }}</span>
+    <button v-if="working && stopUrl" type="button" class="btn btn-plain ml-auto h-7 flex-none px-2 text-[13px]" :disabled="stopping" @click="stop"><PhStop :size="14" />Stop</button>
   </div>
 
   <section v-else class="flex flex-col gap-3" role="status" aria-live="polite">
@@ -60,6 +70,7 @@ const took = computed(() => {
       <PhCheck v-else :size="18" class="flex-none" />
       <h2 class="m-0 font-serif text-[20px] leading-tight font-medium">{{ title }}</h2>
       <span v-if="elapsed" class="meta ml-auto tabular-nums">{{ elapsed }}</span>
+      <button v-if="working && stopUrl" type="button" class="btn btn-plain h-7 px-2 text-[13px]" :disabled="stopping" @click="stop"><PhStop :size="14" />Stop</button>
     </div>
     <ol v-if="steps.length" class="m-0 flex list-none flex-col gap-1.5 p-0">
       <li v-for="(s, i) in steps" :key="`${i}-${s}`" class="land flex items-start gap-2 text-[14px]">
@@ -79,6 +90,6 @@ const took = computed(() => {
         </template>
       </li>
     </ol>
-    <p v-if="failed && job.error" class="m-0 text-[14px] text-rec">{{ job.error }}</p>
+    <p v-if="failed && job.error && job.error !== 'Stopped.'" class="m-0 text-[14px] text-rec">{{ job.error }}</p>
   </section>
 </template>
