@@ -2,7 +2,7 @@
 // One way to show an agent job everywhere: what is running, for how long, the steps done, and where it stopped.
 import { PhCheck, PhCircleNotch, PhWarningCircle, PhX } from '@phosphor-icons/vue'
 
-export type JobView = { kind: string, state: string, steps: string[], error?: string, started?: number }
+export type JobView = { kind: string, state: string, steps: string[], at?: number[], error?: string, started?: number, ended?: number }
 const props = defineProps<{ job: JobView, compact?: boolean }>()
 
 const TITLES: Record<string, [string, string]> = {
@@ -29,10 +29,16 @@ watch(working, (w) => {
   if (w) timer = setInterval(() => { now.value = Date.now() }, 1000)
 }, { immediate: true })
 onBeforeUnmount(() => clearInterval(timer))
-const elapsed = computed(() => {
-  if (!props.job.started) return ''
-  const s = Math.max(0, Math.floor((now.value - props.job.started) / 1000))
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+const clock = (ms: number) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }
+const elapsed = computed(() => props.job.started ? clock((working.value ? now.value : props.job.ended ?? now.value) - props.job.started) : '')
+// How long each shown step took: until the next step started, or until the job ended.
+const took = computed(() => {
+  const at = props.job.at ?? []
+  const shown = props.job.steps.length - steps.value.length
+  return steps.value.map((_, i) => {
+    const a = at[shown + i], b = at[shown + i + 1] ?? (working.value ? now.value : props.job.ended)
+    return a && b ? `${Math.max(0, Math.round((b - a) / 1000))}s` : ''
+  })
 })
 </script>
 
@@ -52,13 +58,14 @@ const elapsed = computed(() => {
       <PhWarningCircle v-else-if="failed" :size="18" class="flex-none" />
       <PhCheck v-else :size="18" class="flex-none" />
       <h2 class="m-0 font-serif text-[20px] leading-tight font-medium">{{ title }}</h2>
-      <span v-if="working && elapsed" class="meta ml-auto tabular-nums">{{ elapsed }}</span>
+      <span v-if="elapsed" class="meta ml-auto tabular-nums">{{ elapsed }}</span>
     </div>
     <ol v-if="steps.length" class="m-0 flex list-none flex-col gap-1.5 p-0">
       <li v-for="(s, i) in steps" :key="`${i}-${s}`" class="land flex items-start gap-2 text-[14px]">
         <template v-if="i < steps.length - 1 || job.state === 'done'">
           <PhCheck :size="14" class="mt-[3px] flex-none text-muted" />
-          <span class="text-muted">{{ s }}</span>
+          <span class="min-w-0 flex-1 text-muted">{{ s }}</span>
+          <span v-if="took[i]" class="meta flex-none tabular-nums">{{ took[i] }}</span>
         </template>
         <template v-else-if="failed">
           <PhX :size="14" class="mt-[3px] flex-none text-rec" />
@@ -66,7 +73,8 @@ const elapsed = computed(() => {
         </template>
         <template v-else>
           <span class="mt-[6px] size-2 flex-none rounded-full bg-ink pulse" />
-          <span class="text-ink">{{ s }}</span>
+          <span class="min-w-0 flex-1 text-ink">{{ s }}</span>
+          <span v-if="took[i]" class="meta flex-none tabular-nums">{{ took[i] }}</span>
         </template>
       </li>
     </ol>

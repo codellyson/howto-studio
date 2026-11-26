@@ -118,28 +118,53 @@ Approved outline. Follow it in order; each step becomes one or more script lines
 ${a.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}`
 }
 
+// Writing and changing a script only needs the code and what code reading found: no running app, no browser, and no
+// skill manual. The labels are checked against the live page when the video is filmed.
+const scriptBrief = (app: AppConfig, guide: string) => {
+  const s = app.summary
+  const saves = s?.saves.map(x => `${x.method} ${x.route}: ${x.what}${x.oneWay ? ' (one-way)' : ''}`).join('; ')
+  return `You write scripts for short narrated how-to videos of ${app.name}, a web app. Its code is in ${app.repo}; read only the files this task needs.
+${s ? `What reading the code found: ${s.framework}. Sign-in: ${s.signIn}. Pages: ${s.pages.join(', ')}.${saves ? ` Saves: ${saves}.` : ''}\n` : ''}The video project is ${appDir(app.slug)}. The script for this video is ${appDir(app.slug)}/scripts/${guide}/script.md, and its notes are ${appDir(app.slug)}/scripts/${guide}/notes.md. Write only these two files, at these exact paths; never write inside the app's code.
+Do not start the app, open a browser, make the voice or film. Nobody can answer questions during this run.
+
+The script format: a heading "# ${app.name} / <task, short>", a line on who watches and what they can do after, "## Setup needed" and "## Watch out" lists, then "## Script" with this table. Each row is one line of the video; the last cell is both the voice and the caption, so never put "|" in it.
+| Shot | On screen | Voiceover |
+|---|---|---|
+| L01 | What the cursor does and what appears. | One short spoken sentence. |
+
+Rules for every line:
+- For someone who is not technical and a bit nervous. One action per line, in the words on the screen ("click Save"), short sentences, no jargon.
+- Use labels exactly as the code renders them: button text, headings, menu items.
+- Something happens in the first line. Every line that says "click X" clicks X; if it only points, say "this is X".
+- Each voice line fits one caption line: about 70 characters.
+- 30 to 60 seconds in all.
+- In the On screen cell of a line whose click can't be undone (approve, send, pay, delete), add "(one-way)".
+- When the video switches to another person's view, make it visible (their name or page) and say whose view it is.
+- End on the result, ideally as the customer, recipient or teammate sees it.
+
+Then run: node ${SKILL}/scripts/check.cjs ${appDir(app.slug)} ${guide}
+Fix what it flags. If a flag is wrong for this video, keep the line and say why in the notes.
+Your final message is shown to the person: one or two plain sentences, no "I" or "we", no praise. If you could not finish, say where it stopped and why.`
+}
+
 export function startScript(app: AppConfig, guide: string, task: string) {
-  const prompt = () => `${shared(app, guide)}
+  const prompt = `${scriptBrief(app, guide)}
 
 Task for this video: ${task}
 
-Do these parts only:
-1. The "Write the takes from the repository" steps, reading the code for this task.
-2. Section 1: write scripts/${guide}/script.md from references/script-template.md. Its heading must be "# ${app.name} / <task name, short>". Check the labels with probe.cjs. In the On screen cell of any line whose click can't be undone (approve, send, pay, delete), add "(one-way)". Follow the skill's script rules: something happens in the first line, every "click X" line clicks X, and each voice line fits on one caption line. Then run node ${SKILL}/scripts/check.cjs . ${guide} and fix what it flags; if a flag is wrong for this video, keep the line and say why in notes.md.
-3. Write scripts/${guide}/notes.md: the saves this video makes, which are one-way, guards, dialogs, and anything that shapes the takes.
-Do not make the voice and do not record. The person approves the script in the studio.`
+Write the script. Then write the notes: the saves this video makes, which are one-way, guards and confirm dialogs, required fields, and anything else filming needs to know.`
   return runClaude(key(app.slug, guide), 'script', prompt, {
-    cwd: appDir(app.slug), env: guideEnv(app), ...onThisMac(app),
+    cwd: appDir(app.slug),
     onDone: () => { if (!readScript(app.slug, guide).lines.length) throw new Error('No script was written') },
   })
 }
 
 export function startChange(app: AppConfig, guide: string, request: string) {
-  const prompt = () => `${shared(app, guide)}
+  const prompt = `${scriptBrief(app, guide)}
 
-Change scripts/${guide}/script.md as asked: "${request}"
-Keep the skill's table format. Afterwards run node ${SKILL}/scripts/check.cjs . ${guide} and fix anything the change broke. If the request is about timing, pauses or clicks rather than words, record it in scripts/${guide}/notes.md so the takes follow it. Do not make the voice and do not record.`
-  return runClaude(key(app.slug, guide), 'change', prompt, { cwd: appDir(app.slug), env: guideEnv(app), ...onThisMac(app) })
+Change the script as asked: "${request}"
+Keep the table format and the line numbering in order. If the request is about timing, pauses or clicks rather than words, also put it in the notes so filming follows it.`
+  return runClaude(key(app.slug, guide), 'change', prompt, { cwd: appDir(app.slug) })
 }
 
 export function startRecord(app: AppConfig, guide: string, from?: string) {
@@ -149,6 +174,8 @@ export function startRecord(app: AppConfig, guide: string, from?: string) {
   const part = from ? `\nFilm only from line ${from} on. The lines before it are already filmed and stay as they are: make the voice (only changed lines are remade), update this video's take if the script's actions changed, then run record.cjs with --from ${from} and cut.py, as "Changing part of a video" in section 5 says. Do not film the whole video again.\n` : ''
   const prompt = () => `${shared(app, guide)}
 ${part}
+The script was written from the code, without opening the app. Before writing the take, look at its pages with probe.cjs; where a label on screen differs from the script's wording, correct the script (keep its meaning) and note it in scripts/${guide}/notes.md.
+
 Film this video now, following sections 2 to 5 for ${guide}:
 - Make the voice with voice "${VOICES[app.voice] ?? 'am_michael'}".
 - Write or update this video's function in takes.cjs, using the repository section and scripts/${guide}/notes.md.

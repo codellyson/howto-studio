@@ -3,6 +3,20 @@ import json, os, subprocess, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lines import read
 
+# Kokoro runs in this one process when its Python and model files are here (about 1 s to load, then a fraction of a
+# second per line). Otherwise each line goes through `hyperframes tts`, which also fetches the model the first time.
+KVENV = os.path.expanduser('~/.cache/howto-video/kvenv/bin/python')
+MODEL = os.path.expanduser('~/.cache/hyperframes/tts/models/kokoro-v1.0.onnx')
+VOICES = os.path.expanduser('~/.cache/hyperframes/tts/voices/voices-v1.0.bin')
+try:
+    import kokoro_onnx, soundfile
+except ImportError:
+    # The venv's python is a symlink to the system one, so compare environments, not binaries.
+    if os.path.exists(KVENV) and os.path.realpath(sys.prefix) != os.path.realpath(os.path.dirname(os.path.dirname(KVENV))):
+        os.execv(KVENV, [KVENV, *sys.argv])
+    kokoro_onnx = None
+kokoro = kokoro_onnx.Kokoro(MODEL, VOICES) if kokoro_onnx and os.path.exists(MODEL) and os.path.exists(VOICES) else None
+
 project, guide = sys.argv[1], sys.argv[2]
 voice = sys.argv[3] if len(sys.argv) > 3 else 'am_michael'
 out = os.path.abspath(os.path.join(project, 'audio', guide))
@@ -20,7 +34,11 @@ for line_id, text in read(os.path.join(project, 'scripts', guide, 'script.md')):
         durations[line_id] = old[line_id]
         continue
     remade.append(line_id)
-    subprocess.check_call(['pnpm', 'dlx', 'hyperframes@latest', 'tts', text, '-v', voice, '-o', wav], env=env, cwd=out, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+    if kokoro:
+        samples, rate = kokoro.create(text, voice=voice, speed=1.0, lang='en-us')
+        soundfile.write(wav, samples, rate)
+    else:
+        subprocess.check_call(['pnpm', 'dlx', 'hyperframes@latest', 'tts', text, '-v', voice, '-o', wav], env=env, cwd=out, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
     durations[line_id] = float(subprocess.check_output(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', wav]))
     made[line_id] = [voice, text]
 assert durations, 'no lines in the script table'

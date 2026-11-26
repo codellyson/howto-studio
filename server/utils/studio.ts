@@ -7,7 +7,10 @@ import { basename, join, resolve } from 'node:path'
 // Everything lives in one folder: one howto-video skill project per app (apps/<slug>), sign-in profiles beside it.
 export const HOME = resolve(process.env.STUDIO_HOME || join(homedir(), 'HowtoStudio'))
 export const SKILL = resolve(process.env.HOWTO_SKILL || join(homedir(), '.claude/skills/howto-video'))
-const MODEL = process.env.STUDIO_MODEL || 'opus'
+// Each step gets the fastest model that does it well. Filming writes the code that drives the take, where a mistake
+// costs a whole take, so it keeps the strongest model. STUDIO_MODEL overrides all of them.
+const MODELS: Record<string, string> = { connect: 'sonnet', plan: 'haiku', script: 'sonnet', change: 'sonnet', record: 'opus' }
+const modelFor = (kind: string) => process.env.STUDIO_MODEL || MODELS[kind] || 'sonnet'
 export const SAFE = /^[a-z0-9][a-z0-9-]{0,60}$/
 
 export type Save = { method: string, route: string, what: string, oneWay: boolean }
@@ -15,7 +18,7 @@ export type Summary = { framework: string, clientRendered: boolean, signIn: stri
 // mode 'local': the site is the app's dev server on this Mac, started with `start` in the repo when it isn't running.
 export type AppConfig = { slug: string, name: string, repo: string, site: string, voice: string, fakeSaves: boolean, mode?: 'live' | 'local', start?: string, build?: string, serve?: string, summary?: Summary, signedIn?: boolean }
 export type Line = { id: string, screen: string, voice: string }
-export type Job = { kind: 'connect' | 'plan' | 'script' | 'change' | 'record' | 'signin' | 'render', state: 'working' | 'done' | 'error', steps: string[], error?: string, started: number, pid?: number, detached?: boolean }
+export type Job = { kind: 'connect' | 'plan' | 'script' | 'change' | 'record' | 'signin' | 'render', state: 'working' | 'done' | 'error', steps: string[], at?: number[], error?: string, started: number, ended?: number, pid?: number, detached?: boolean }
 
 export const appDir = (slug: string) => join(HOME, 'apps', slug)
 export const profileDir = (slug: string) => join(HOME, 'profiles', slug)
@@ -287,6 +290,7 @@ export const jobs = {
   },
   save(k: string, job: Job) {
     mkdirSync(jobsDir, { recursive: true })
+    if (job.state !== 'working' && !job.ended) job.ended = Date.now()
     writeFileSync(jobFile(k), JSON.stringify({ ...job, detached: true }))
   },
   entries: () => memory.entries(),
@@ -307,7 +311,13 @@ export function runClaude(k: string, kind: Job['kind'], prompt: string | (() => 
   if (busy(k)) throw createError({ statusCode: 409, statusMessage: 'This is already running.' })
   const job: Job = { kind, state: 'working', steps: [], started: Date.now() }
   jobs.set(k, job)
-  const say = (t?: string | null) => { if (t && job.steps.at(-1) !== t) { job.steps = [...job.steps, t].slice(-60); jobs.save(k, job) } }
+  // Each step keeps the time it started, so the studio can show how long every step took.
+  const say = (t?: string | null) => {
+    if (!t || job.steps.at(-1) === t) return
+    job.steps = [...job.steps, t].slice(-60)
+    job.at = [...(job.at ?? []), Date.now()].slice(-60)
+    jobs.save(k, job)
+  }
   const fail = (message: string) => { job.state = 'error'; job.error = message; jobs.save(k, job); opts.after?.() }
   ;(async () => {
     try { await opts.before?.(say) } catch (e: any) { return fail(`${e.message}.`) }
@@ -316,11 +326,13 @@ export function runClaude(k: string, kind: Job['kind'], prompt: string | (() => 
   return job
 
   function launch() {
-    const args = ['-p', '--model', MODEL, '--output-format', 'stream-json', '--verbose', '--no-session-persistence', '--add-dir', SKILL]
+    const args = ['-p', '--model', modelFor(kind), '--output-format', 'stream-json', '--verbose', '--no-session-persistence', '--add-dir', SKILL]
     if (opts.schema) args.push('--json-schema', JSON.stringify(opts.schema))
     args.push('--allowedTools', ...(opts.readOnly ? ['Read', 'Glob', 'Grep'] : TOOLS))
     if (opts.readOnly) args.push('--disallowedTools', 'Bash', 'Edit', 'Write')
-    const child = spawn('claude', args, { cwd: opts.cwd, env: { ...process.env, ...opts.env, HOWTO_STUDIO_CHILD: '1' } })
+    // Extended thinking made a script take 274 s instead of 164 s with scripts as good; filming keeps it.
+    const thinking = kind === 'record' ? {} : { MAX_THINKING_TOKENS: '0' }
+    const child = spawn('claude', args, { cwd: opts.cwd, env: { ...process.env, ...thinking, ...opts.env, HOWTO_STUDIO_CHILD: '1' } })
     job.pid = child.pid
     jobs.save(k, job)
     let buf = ''
