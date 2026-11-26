@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PhFolderOpen, PhHeadphones, PhPencilSimple } from '@phosphor-icons/vue'
+import { PhDownloadSimple, PhFolderOpen, PhHeadphones, PhPencilSimple } from '@phosphor-icons/vue'
 
 const { slug, guide, base, data: video, error, frame, lengths, oneWayLines } = useVideo()
 const player = ref<HTMLVideoElement>()
@@ -29,6 +29,11 @@ const storeKey = computed(() => `listened:${slug}/${guide}:${video.value?.record
 watch(storeKey, (k) => { try { listened.value = localStorage.getItem(k) === '1' } catch {} }, { immediate: true })
 watch(listened, (v) => { try { localStorage.setItem(storeKey.value, v ? '1' : '0') } catch {} })
 
+const saved = ref('')
+async function download() {
+  problem.value = ''
+  try { saved.value = (await $fetch<{ file: string }>(`${base}/download`, { method: 'POST' })).file } catch (e) { problem.value = errorText(e) }
+}
 async function showInFinder() {
   problem.value = ''
   try { await $fetch(`${base}/reveal`, { method: 'POST' }) } catch (e) { problem.value = errorText(e) }
@@ -39,9 +44,11 @@ async function showInFinder() {
   <div class="flex h-screen min-h-[640px] flex-col overflow-hidden">
     <TopBar :crumbs="[{ label: video?.app.name ?? '', to: `/apps/${slug}` }, { label: video?.title ?? '' }]">
       <NuxtLink :to="`/apps/${slug}/v/${guide}`" class="btn btn-secondary"><PhPencilSimple :size="16" />Edit</NuxtLink>
-      <button type="button" class="btn btn-primary" :disabled="!video?.recorded" @click="showInFinder"><PhFolderOpen :size="16" />Show in Finder</button>
+      <button type="button" class="btn btn-secondary" :disabled="!video?.recorded" @click="showInFinder"><PhFolderOpen :size="16" />Show in Finder</button>
+      <button type="button" class="btn btn-primary" :disabled="!video?.recorded" @click="download"><PhDownloadSimple :size="16" />Download</button>
     </TopBar>
     <p v-if="error || problem" class="m-0 border-b border-line px-4 py-2 text-rec" role="alert">{{ problem || error }}</p>
+    <p v-else-if="saved" class="m-0 border-b border-line px-4 py-2 text-muted" role="status">Saved to Downloads as “{{ saved }}”.</p>
     <p v-else-if="video?.status === 'changed'" class="m-0 border-b border-line px-4 py-2 text-muted">The script changed after filming. This video still shows the old script.</p>
 
     <div class="flex min-h-0 flex-1">
