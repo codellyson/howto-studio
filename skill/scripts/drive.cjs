@@ -43,6 +43,12 @@ async function openBrowser() {
   if (config.initScript) await ctx.addInitScript(config.initScript);
   const page = ctx.pages()[0] || (await ctx.newPage());
   page.on('dialog', (d) => d.accept().catch(() => {}));
+  // Requests to the app that failed or weren't answered: usually a fake the take still needs.
+  const failed = new Set();
+  const site = process.env.GUIDE_SITE || config.site || '';
+  const ours = (u) => { try { return new URL(u).host === new URL(site).host; } catch { return false; } };
+  page.on('response', (r) => { if (r.status() >= 400 && ours(r.url())) failed.add(`${r.status()} ${r.request().method()} ${new URL(r.url()).pathname}`); });
+  page.on('requestfailed', (r) => { if (ours(r.url()) && !/\.(js|css|woff2?|png|svg|ico)(\?|$)/.test(r.url())) failed.add(`failed ${r.method()} ${new URL(r.url()).pathname}`); });
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const point = async (loc) => {
     await loc.scrollIntoViewIfNeeded();
@@ -62,7 +68,7 @@ async function openBrowser() {
   if (hooks.setup) await hooks.setup(t, state, guide);
   const io = { page, click: t.click, hover: t.hover, sleep: (ms) => sleep(Math.min(ms, 300)), asset: t.asset,
     site: process.env.GUIDE_SITE || config.site, hooks, state, t };
-  return { ctx, page, io, blocked, copy };
+  return { ctx, page, io, blocked, failed, copy };
 }
 
 // Everything saved so far, in take order. Stops at the first failure and says where.
@@ -81,7 +87,11 @@ async function replay(b, take) {
 
 const emptyTake = () => ({ start: '/', warm: [], lines: {}, before: {} });
 const take = () => steps.readTake(project, guide) || emptyTake();
-const writes = (b) => (b.blocked.size ? `\nBLOCKED WRITES: ${[...b.blocked].join(', ')}` : '');
+const writes = (b) => {
+  const out = `${b.blocked.size ? `\nBLOCKED WRITES: ${[...b.blocked].join(', ')}` : ''}${b.failed.size ? `\nREQUESTS NOT ANSWERED (missing fakes?): ${[...b.failed].join(', ')}` : ''}`;
+  b.failed.clear();
+  return out;
+};
 
 async function serve() {
   const b = await openBrowser();
@@ -158,6 +168,9 @@ const print = (r) => { console.log(r.text); process.exitCode = r.ok ? 0 : 1; };
     throw new Error(`the browser did not open; see out/drive-${guide}.log`);
   }
   if (cmd === 'check') {
+    // A check only needs to know whether the take runs: short waits, and no model repairs.
+    process.env.GUIDE_WAIT = process.env.GUIDE_WAIT || '4000';
+    process.env.GUIDE_NO_MODEL_REPAIR = '1';
     const b = await openBrowser();
     try {
       await replay(b, take());

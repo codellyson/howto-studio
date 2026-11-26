@@ -155,8 +155,26 @@ Task for this video: ${task}
 Write the script. Then write the notes: the saves this video makes, which are one-way, guards and confirm dialogs, required fields, and anything else filming needs to know.`
   return runClaude(key(app.slug, guide), 'script', prompt, {
     cwd: appDir(app.slug),
-    onDone: () => { if (!readScript(app.slug, guide).lines.length) throw new Error('No script was written') },
+    onDone: () => {
+      if (!readScript(app.slug, guide).lines.length) throw new Error('No script was written')
+      // The demo data is prepared straight after, while the person reads the script.
+      if (app.fakeSaves) setTimeout(() => { try { startFakes(readApp(app.slug), guide) } catch {} }, 1500)
+    },
   })
+}
+
+// Before filming: make sure every read and save this video makes is answered with invented data, so filming only
+// has to find targets. Checked against the real pages with drive.cjs, without building the take.
+export function startFakes(app: AppConfig, guide: string) {
+  const dir = appDir(app.slug)
+  const prompt = `${shared(app, guide)}
+
+Prepare the invented data this video needs, before anyone films it. Do not build the take and do not film.
+1. Read ${dir}/scripts/${guide}/script.md and its notes.md, and ${dir}/takes.cjs. takes.cjs holds what the whole app needs: site, blockWrites and hooks; hooks.setup answers the app's requests with invented data (often from a fixtures file). If takes.cjs has no hooks yet, write them now, following "Build the take live" and "Write the takes from the repository" in section 4 of the skill.
+2. From the app's code, list every request the pages in this video make (reads) and every save its steps make. For each one hooks.setup does not answer yet, add an answer that tells this video's story with the same invented people and records the app already uses. A save must return what the client expects and change the state the next reads show (a card that moves, a status that changes). Keep other videos working.
+3. Check the reads: run node ${SKILL}/scripts/drive.cjs ${dir} ${guide} start, then open each page the video shows (drive.cjs open /path). Each answer lists REQUESTS NOT ANSWERED; fix hooks until none are left for this video's pages. Then drive.cjs stop.
+4. Write what you faked, briefly, at the end of ${dir}/scripts/${guide}/notes.md under "## Faked data".`
+  return runClaude(key(app.slug, guide), 'fakes', prompt, { cwd: dir, env: guideEnv(app), ...onThisMac(app) })
 }
 
 export function startChange(app: AppConfig, guide: string, request: string) {
@@ -174,7 +192,7 @@ export function startRecord(app: AppConfig, guide: string, from?: string) {
   const part = from ? `\nFilm only from line ${from} on. The lines before it are already filmed and stay as they are: make the voice (only changed lines are remade), update this video's take if the script's actions changed, then run record.cjs with --from ${from} and cut.py, as "Changing part of a video" in section 5 says. Do not film the whole video again.\n` : ''
   const prompt = () => `${shared(app, guide)}
 ${part}
-The script was written from the code, without opening the app. Build this video's take live with drive.cjs, as "Build the take live" in section 4 says: one step at a time in the real page, choosing targets from the page it prints. Where a label on screen differs from the script's wording, correct the script (keep its meaning) and note it in scripts/${guide}/notes.md. Faked data and anything else the whole app needs belong in takes.cjs (site, blockWrites, hooks); add to it only what this video needs, and never write this video's steps there. Run drive.cjs check, then stop, before filming.
+The invented data this video needs was prepared after the script was written (see "## Faked data" in the notes). If a step fails because a request isn't answered, add that one answer to the hooks and carry on. The script was written from the code, without opening the app. Build this video's take live with drive.cjs, as "Build the take live" in section 4 says: one step at a time in the real page, choosing targets from the page it prints. Where a label on screen differs from the script's wording, correct the script (keep its meaning) and note it in scripts/${guide}/notes.md. Faked data and anything else the whole app needs belong in takes.cjs (site, blockWrites, hooks); add to it only what this video needs, and never write this video's steps there. Run drive.cjs check, then stop, before filming.
 
 Film this video now, following sections 2 to 5 for ${guide}:
 - Make the voice with voice "${VOICES[app.voice] ?? 'am_michael'}".

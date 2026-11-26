@@ -9,7 +9,7 @@ export const HOME = resolve(process.env.STUDIO_HOME || join(homedir(), 'HowtoStu
 export const SKILL = resolve(process.env.HOWTO_SKILL || join(homedir(), '.claude/skills/howto-video'))
 // Each step gets the fastest model that does it well. Filming writes the code that drives the take, where a mistake
 // costs a whole take, so it keeps the strongest model. STUDIO_MODEL overrides all of them.
-const MODELS: Record<string, string> = { connect: 'sonnet', plan: 'haiku', script: 'sonnet', change: 'sonnet', record: 'opus' }
+const MODELS: Record<string, string> = { connect: 'sonnet', plan: 'haiku', script: 'sonnet', change: 'sonnet', fakes: 'sonnet', record: 'opus' }
 const modelFor = (kind: string) => process.env.STUDIO_MODEL || MODELS[kind] || 'sonnet'
 export const SAFE = /^[a-z0-9][a-z0-9-]{0,60}$/
 
@@ -18,7 +18,7 @@ export type Summary = { framework: string, clientRendered: boolean, signIn: stri
 // mode 'local': the site is the app's dev server on this Mac, started with `start` in the repo when it isn't running.
 export type AppConfig = { slug: string, name: string, repo: string, site: string, voice: string, fakeSaves: boolean, mode?: 'live' | 'local', start?: string, build?: string, serve?: string, summary?: Summary, signedIn?: boolean }
 export type Line = { id: string, screen: string, voice: string }
-export type Job = { kind: 'connect' | 'plan' | 'script' | 'change' | 'record' | 'signin' | 'render', state: 'working' | 'done' | 'error', steps: string[], at?: number[], error?: string, started: number, ended?: number, pid?: number, detached?: boolean }
+export type Job = { kind: 'connect' | 'plan' | 'script' | 'fakes' | 'change' | 'record' | 'signin' | 'render', state: 'working' | 'done' | 'error', steps: string[], at?: number[], error?: string, started: number, ended?: number, pid?: number, detached?: boolean }
 
 export const appDir = (slug: string) => join(HOME, 'apps', slug)
 export const profileDir = (slug: string) => join(HOME, 'profiles', slug)
@@ -108,7 +108,7 @@ export const writeOutline = (slug: string, guide: string, o: Outline) => writeFi
 
 export function videoStatus(slug: string, guide: string) {
   const job = jobs.get(key(slug, guide))
-  if (job?.state === 'working') return job.kind === 'record' ? 'recording' : job.kind === 'render' ? 'rendering' : job.kind === 'plan' ? 'planning' : 'writing'
+  if (job?.state === 'working') return job.kind === 'record' ? 'recording' : job.kind === 'render' ? 'rendering' : job.kind === 'plan' ? 'planning' : job.kind === 'fakes' ? 'preparing' : 'writing'
   const script = scriptFile(slug, guide)
   if (!existsSync(script)) {
     if (job?.state === 'error') return 'failed'
@@ -277,6 +277,7 @@ export const jobs = {
       const made = job.kind === 'record' || job.kind === 'render' ? !!readRecorded(slug, guide)
         : job.kind === 'script' ? readScript(slug, guide).lines.length > 0
           : job.kind === 'plan' ? !!readOutline(slug, guide)
+            : job.kind === 'fakes' ? true
           : job.kind === 'connect' ? existsSync(configFile(slug)) && !!readApp(slug).summary && statSync(configFile(slug)).mtimeMs >= job.started
             : false
       Object.assign(job, made ? { state: 'done' } : { state: 'error', error: 'The studio restarted while this was running. Try again.' })
@@ -331,7 +332,7 @@ export function runClaude(k: string, kind: Job['kind'], prompt: string | (() => 
     args.push('--allowedTools', ...(opts.readOnly ? ['Read', 'Glob', 'Grep'] : TOOLS))
     if (opts.readOnly) args.push('--disallowedTools', 'Bash', 'Edit', 'Write')
     // Extended thinking made a script take 274 s instead of 164 s with scripts as good; filming keeps it.
-    const thinking = kind === 'record' ? {} : { MAX_THINKING_TOKENS: '0' }
+    const thinking = kind === 'record' || kind === 'fakes' ? {} : { MAX_THINKING_TOKENS: '0' }
     const child = spawn('claude', args, { cwd: opts.cwd, env: { ...process.env, ...thinking, ...opts.env, HOWTO_STUDIO_CHILD: '1' } })
     job.pid = child.pid
     jobs.save(k, job)

@@ -19,7 +19,8 @@ const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const WAIT = 10000;
+// How long a target may take to appear. A check run lowers it (GUIDE_WAIT) to fail fast.
+const wait = () => Number(process.env.GUIDE_WAIT) || 10000;
 const pattern = (v) => {
   const m = typeof v === 'string' && v.match(/^\/(.+)\/([a-z]*)$/);
   return m ? new RegExp(m[1], m[2]) : v;
@@ -76,7 +77,7 @@ Reply with only a JSON target for the element meant, using the same format: {"ro
 async function find(page, T, { context, onRepair } = {}) {
   const loc = locate(page, T);
   try {
-    await loc.waitFor({ state: 'visible', timeout: WAIT });
+    await loc.waitFor({ state: 'visible', timeout: wait() });
     return loc;
   } catch (e) {
     const fixed = await repair(page, T, context);
