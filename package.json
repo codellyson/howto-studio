@@ -11,7 +11,7 @@
     "build": "nuxt build",
     "test": "node --test test/*.test.ts",
     "postinstall": "nuxt prepare",
-    "site:build": "tailwindcss -i site/style.css -o site/dist/style.css --minify && cp site/index.html site/dist/ && cp -R site/img site/dist/"
+    "site:build": "tailwindcss -i site/style.css -o site/dist/style.css --minify && sed \"s/{{VERSION}}/$(node -p \"require('./desktop/tauri.conf.json').version\")/g\" site/index.html > site/dist/index.html && cp -R site/img site/dist/"
   },
   "dependencies": {
     "@phosphor-icons/vue": "^2.2.1",
