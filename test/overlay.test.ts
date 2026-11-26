@@ -90,3 +90,18 @@ test('the script check flags idle lines, fake clicks, long captions, length and 
   const kept = C.checkScript([{ id: 'L01', screen: 'Click New.', voice: 'Click New.' }, { id: 'L02', screen: 'Cursor rests.', voice: 'Done.' }, { id: 'L03', screen: 'Customer view.', voice: 'Their view.' }], null, ['L02: Only the cursor moves here. Show something happening, or fold it into the line before.'])
   assert.equal(kept.count, 0)
 })
+
+test('a repaired target replaces the old one everywhere in the take', async () => {
+  const S = createRequire(import.meta.url)('../skill/scripts/steps.cjs')
+  const { mkdtempSync, mkdirSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const dir = mkdtempSync(join(tmpdir(), 'take-'))
+  mkdirSync(join(dir, 'scripts', 'g'), { recursive: true })
+  const old = { role: 'button', name: 'Submit' }
+  S.writeTake(dir, 'g', { start: '/', lines: { L01: [{ click: old }], L02: [{ wait: old }, { hover: { text: 'Other' } }] } })
+  S.saveRepair(dir, 'g', old, { role: 'button', name: 'File it' })
+  const take = S.readTake(dir, 'g')
+  assert.equal(take.lines.L01[0].click.name, 'File it')
+  assert.equal(take.lines.L02[0].wait.name, 'File it')
+  assert.equal(take.lines.L02[1].hover.text, 'Other')
+})

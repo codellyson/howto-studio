@@ -395,6 +395,11 @@ function describe(name: string, i: any): string | null {
   if (cmd.includes('cut.py')) return 'Cutting and checking the video'
   if (cmd.includes('probe.cjs')) return 'Looking at the live page'
   if (cmd.includes('check.cjs')) return 'Checking the script'
+  if (cmd.includes('drive.cjs')) {
+    const m = cmd.match(/drive\.cjs\s+\S+\s+\S+\s+(\w+)(?:\s+(L\d+))?/)
+    const what: Record<string, string> = { start: 'Opening the app', open: 'Opening the first page', do: 'Trying a step', before: 'Preparing a line', check: 'Running the whole take', look: 'Looking at the page', stop: 'Closing the browser', undo: 'Dropping a step' }
+    return m ? `${what[m[1]!] ?? 'Building the take'}${m[2] ? ` in line ${m[2].slice(1).replace(/^0/, '')}` : ''}` : 'Building the take'
+  }
   if (cmd.includes('repo-writes.cjs')) return 'Listing what the app saves'
   if (/pnpm (add|install)|playwright install/.test(cmd)) return 'Setting up the recorder'
   if (cmd.startsWith('curl')) return 'Checking the real data is unchanged'

@@ -8,6 +8,17 @@ module.exports = {
   ignoreBlocked: [/\/analytics\//, /\/cdn-cgi\//],
   // Optional. Hide development-only controls.
   css: '#dev-toolbar{display:none!important}',
+  // The site, for take.json paths. GUIDE_SITE wins when set.
+  site: APP,
+  // What every take of this app needs. setup runs before each take and each drive.cjs session: fake the data
+  // here. Other hooks are steps a take.json can call: { "hook": "viewer", "args": ["sam"] }.
+  hooks: {
+    async setup(t, state) {
+      // await t.page.route(/\/api\//, (r) => ...)
+    },
+  },
+
+  // Older videos only: a take written as a function. New videos keep their steps in scripts/<guide>/take.json.
 
   guides: {
     async 'change-your-name'(t) {

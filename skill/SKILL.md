@@ -157,9 +157,31 @@ The `called` column of `repo-writes.cjs` is approximate. Confirm in the page's c
 
 After the take, confirm the real record has not changed (fetch it with curl and compare), and tell the user. The `WRITES` list still shows the faked requests; the `BLOCKED` list must be empty.
 
+### Build the take live
+
+A video's take is data, not code: `scripts/<guide>/take.json`, a list of steps per script line (click, hover, type, paste, wait, and so on; `scripts/steps.cjs` lists them all). Build it in a real browser, one step at a time, with `drive.cjs`. Each step either works and is kept, or fails and isn't, and the page is printed either way, so you pick the next target from what is really on screen:
+
+```bash
+node $SKILL/scripts/drive.cjs <project> <guide> start
+node $SKILL/scripts/drive.cjs <project> <guide> open /hub
+node $SKILL/scripts/drive.cjs <project> <guide> do L01 '{"click": {"in": {"role": "navigation"}, "role": "link", "name": "New"}}'
+node $SKILL/scripts/drive.cjs <project> <guide> do L01 '{"wait": {"role": "heading", "name": "What do you need?"}}'
+node $SKILL/scripts/drive.cjs <project> <guide> before L13 '{"hook": "viewer", "args": ["sam"]}'
+node $SKILL/scripts/drive.cjs <project> <guide> check
+node $SKILL/scripts/drive.cjs <project> <guide> stop
+```
+
+- Pick targets by role and name from the printed page, the way a person reads it. Scope with `"in"` when the same name appears twice (a sidebar and the page). Hidden copies are skipped automatically.
+- End each line that changes the page with a `wait` for what should appear, so filming never races the app.
+- Add `sleep` steps where the voice should name something before the cursor gets there, and set `warm` in take.json to pages worth loading once off camera.
+- `check` replays the whole take in a fresh browser. Run it, then `stop`, before filming: the driver uses a copy of the signed-in profile.
+- When filming, a target that no longer matches is repaired (first by its visible text, then by a quick model call against the page), saved into take.json, and the take stops at that line so it is filmed again cleanly with `--from`.
+
+What a whole app needs goes in `takes.cjs`, written once per app: `site`, `blockWrites`, `css`, and `hooks`. `hooks.setup(t, state, guide)` runs before every take and drive session: put the faked data there (the pattern below, with `t.page.route`). Other hooks are steps a take can call, such as switching whose data the app shows. Never put a video's own steps in `takes.cjs`.
+
 ### Helpers
 
-Copy `references/takes-template.cjs` to `<project>/takes.cjs` and write one function per guide, with one `t.say('Lnn', action)` per script line. The helpers are:
+Older videos keep their take as a function in `takes.cjs`, with one `t.say('Lnn', action)` per script line; record.cjs uses take.json when a video has one. The helpers, which hooks also receive as `t`, are:
 
 | Helper | Use |
 |---|---|

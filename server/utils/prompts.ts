@@ -174,7 +174,7 @@ export function startRecord(app: AppConfig, guide: string, from?: string) {
   const part = from ? `\nFilm only from line ${from} on. The lines before it are already filmed and stay as they are: make the voice (only changed lines are remade), update this video's take if the script's actions changed, then run record.cjs with --from ${from} and cut.py, as "Changing part of a video" in section 5 says. Do not film the whole video again.\n` : ''
   const prompt = () => `${shared(app, guide)}
 ${part}
-The script was written from the code, without opening the app. Before writing the take, look at its pages with probe.cjs; where a label on screen differs from the script's wording, correct the script (keep its meaning) and note it in scripts/${guide}/notes.md.
+The script was written from the code, without opening the app. Build this video's take live with drive.cjs, as "Build the take live" in section 4 says: one step at a time in the real page, choosing targets from the page it prints. Where a label on screen differs from the script's wording, correct the script (keep its meaning) and note it in scripts/${guide}/notes.md. Faked data and anything else the whole app needs belong in takes.cjs (site, blockWrites, hooks); add to it only what this video needs, and never write this video's steps there. Run drive.cjs check, then stop, before filming.
 
 Film this video now, following sections 2 to 5 for ${guide}:
 - Make the voice with voice "${VOICES[app.voice] ?? 'am_michael'}".

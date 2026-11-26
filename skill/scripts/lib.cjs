@@ -1,3 +1,5 @@
+const crypto = require('crypto');
+const fs = require('fs');
 const path = require('path');
 const { createRequire } = require('module');
 
@@ -15,4 +17,37 @@ function profileDir() {
   return dir;
 }
 
-module.exports = { playwright, profileDir };
+// What every browser that films or rehearses a take needs: writes to protected hosts aborted (and listed in
+// `blocked`), and web fonts kept after their first fetch so a slow font never films as the fallback.
+async function prepare(ctx, config, out, blocked = new Set()) {
+  for (const pattern of config.blockWrites || []) {
+    await ctx.route(pattern, (r) => {
+      const req = r.request();
+      if (req.method() === 'GET') return r.continue();
+      if (!(config.ignoreBlocked || []).some((x) => x.test(req.url()))) blocked.add(`${req.method()} ${req.url()}`);
+      return r.abort();
+    });
+  }
+  // A font that fails to load films as the fallback font, so font files are kept after the first fetch.
+  await ctx.route(/^https:\/\/fonts\.(gstatic|googleapis)\.com\//, async (route) => {
+    const dir = path.join(out, 'fonts');
+    fs.mkdirSync(dir, { recursive: true });
+    const key = path.join(dir, crypto.createHash('sha1').update(route.request().url()).digest('hex'));
+    for (let i = 0; i < 4 && !fs.existsSync(key); i++) {
+      const res = await route.fetch({ timeout: 45000 }).catch(() => null);
+      if (res && res.ok()) {
+        fs.writeFileSync(`${key}.type`, res.headers()['content-type'] || '');
+        fs.writeFileSync(key, await res.body());
+      }
+    }
+    if (!fs.existsSync(key)) return route.abort();
+    return route.fulfill({
+      body: fs.readFileSync(key),
+      contentType: fs.readFileSync(`${key}.type`, 'utf8'),
+      headers: { 'access-control-allow-origin': '*' },
+    });
+  });
+  return blocked;
+}
+
+module.exports = { playwright, profileDir, prepare };

@@ -4,18 +4,20 @@
 // Runs guides[<guide>] from <project>/takes.cjs. See references/takes-template.cjs for the helpers it receives.
 // Each script line holds for its audio length, so the screen follows the voice. Captions and cursor are added by dress.cjs.
 // Writes out/raw/<guide>.webm and out/raw/<guide>.timing.json for cut.py.
-const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { playwright, profileDir } = require('./lib.cjs');
+const { playwright, profileDir, prepare } = require('./lib.cjs');
 
 const project = path.resolve(process.argv[2]);
 const guide = process.argv[3];
 const fromArg = process.argv.indexOf('--from');
 const from = fromArg > 0 ? process.argv[fromArg + 1] : null;
 const profile = profileDir();
-const config = require(path.join(project, 'takes.cjs'));
+// takes.cjs holds what the whole app needs (blocked hosts, faked data as `hooks`); a video's steps can live in
+// scripts/<guide>/take.json instead of a function in takes.cjs.
+const config = fs.existsSync(path.join(project, 'takes.cjs')) ? require(path.join(project, 'takes.cjs')) : {};
+const steps = require('./steps.cjs');
 // A smaller page filmed at high DPI: the app's text comes out larger and sharp. The video is S times the page.
 const W = config.width || 1280, H = config.height || 800, S = config.scale || 1.5;
 const GAP = 350;
@@ -47,6 +49,35 @@ const decorate = (css) => {
   document.readyState === 'loading' ? addEventListener('DOMContentLoaded', add) : add();
 };
 
+// A take.json as a guide function: open off camera, then each line's steps on camera. A target repaired during
+// the take is saved, and the take stops at that line, so the next take (--from that line) films it without the
+// pause the repair caused.
+function fromTake(take) {
+  return async (t) => {
+    const state = {};
+    const site = process.env.GUIDE_SITE || config.site;
+    const hooks = config.hooks || {};
+    let repaired = false;
+    const io = { page: t.page, click: t.click, hover: t.hover, sleep: t.sleep, asset: t.asset, site, hooks, state, t,
+      onRepair: (old, fixed) => { steps.saveRepair(project, guide, old, fixed); repaired = true; console.error('REPAIRED', JSON.stringify(old), '->', JSON.stringify(fixed)); } };
+    const all = async (list, context) => { for (const step of list || []) await steps.run(step, { ...io, context }); };
+    if (hooks.setup) await hooks.setup(t, state, guide);
+    await t.offCamera(async () => {
+      for (const u of take.warm || []) await steps.run({ goto: u }, io);
+      await steps.run({ goto: take.start || '/' }, io);
+      await t.waitForImages();
+      await t.sleep(800);
+    });
+    for (const id of Object.keys(lines)) {
+      if (take.before && take.before[id]) await t.offCamera(() => all(take.before[id], lines[id]));
+      await t.say(id, async () => {
+        await all(take.lines[id], lines[id]);
+        if (repaired) throw new Error(`a target in ${id} was repaired and saved; film again from ${id}`);
+      });
+    }
+  };
+}
+
 (async () => {
   const ctx = await playwright(project).chromium.launchPersistentContext(profile, {
     headless: true, // a visible window is cut to the screen height, which clips the bottom of the video
@@ -72,33 +103,7 @@ const decorate = (css) => {
     }
     cursor.push({ wall, k, x: Math.round(x + dx), y: Math.round(y + dy) });
   });
-  for (const pattern of config.blockWrites || []) {
-    await ctx.route(pattern, (r) => {
-      const req = r.request();
-      if (req.method() === 'GET') return r.continue();
-      if (!(config.ignoreBlocked || []).some((x) => x.test(req.url()))) blocked.add(`${req.method()} ${req.url()}`);
-      return r.abort();
-    });
-  }
-  // A font that fails to load films as the fallback font, so font files are kept after the first fetch.
-  await ctx.route(/^https:\/\/fonts\.(gstatic|googleapis)\.com\//, async (route) => {
-    const dir = path.join(out, 'fonts');
-    fs.mkdirSync(dir, { recursive: true });
-    const key = path.join(dir, crypto.createHash('sha1').update(route.request().url()).digest('hex'));
-    for (let i = 0; i < 4 && !fs.existsSync(key); i++) {
-      const res = await route.fetch({ timeout: 45000 }).catch(() => null);
-      if (res && res.ok()) {
-        fs.writeFileSync(`${key}.type`, res.headers()['content-type'] || '');
-        fs.writeFileSync(key, await res.body());
-      }
-    }
-    if (!fs.existsSync(key)) return route.abort();
-    return route.fulfill({
-      body: fs.readFileSync(key),
-      contentType: fs.readFileSync(`${key}.type`, 'utf8'),
-      headers: { 'access-control-allow-origin': '*' },
-    });
-  });
+  await prepare(ctx, config, out, blocked);
   await ctx.addInitScript(decorate, config.css || '');
   if (config.initScript) await ctx.addInitScript(config.initScript);
 
@@ -168,6 +173,14 @@ const decorate = (css) => {
     await p.mouse.up();
   };
 
+  // Points at an element without clicking, the same way a click gets there.
+  const hover = async (loc) => {
+    await loc.scrollIntoViewIfNeeded();
+    const b = await loc.boundingBox();
+    if (!b) throw new Error('nothing to point at');
+    await p.mouse.move(b.x + b.width / 2, b.y + Math.min(b.height / 2, 40), { steps: 30 });
+  };
+
   const t = {
     page: p,
     ctx,
@@ -175,6 +188,7 @@ const decorate = (css) => {
     say,
     offCamera,
     click,
+    hover,
     asset: (name) => path.join(project, 'assets', name),
     button: (name) => p.getByRole('button', { name, exact: true }),
     pickFile: async (loc, files) => {
@@ -212,12 +226,14 @@ const decorate = (css) => {
     afterTake: (fn) => { t.cleanup = fn; },
   };
 
-  if (!config.guides[guide]) throw new Error(`guide? ${Object.keys(config.guides).join(', ')}`);
+  const take = steps.readTake(project, guide);
+  const guideFn = take ? fromTake(take) : (config.guides || {})[guide];
+  if (!guideFn) throw new Error(`no take for ${guide}: write scripts/${guide}/take.json (drive.cjs builds it) or a function in takes.cjs`);
   if (from && !lines[from]) throw new Error(`--from ${from}: no such line`);
   let failed = null;
   const video = p.video();
   try {
-    await config.guides[guide](t);
+    await guideFn(t);
     await sleep(1000);
     const ids = Object.keys(lines);
     const missing = ids.slice(from ? ids.indexOf(from) : 0).filter((id) => !events.some((e) => e.id === id));
