@@ -17,7 +17,7 @@ const fields = computed(() => (current.value?.mode === 'local' ? ['repo', 'build
 const LABELS = computed(() => ({ repo: 'Code folder', build: 'Production build', serve: 'Serve the build (on {port})', start: 'Dev command, used when there is no build', site: current.value?.mode === 'local' ? 'Address on this Mac' : 'Site to film' }))
 const ICONS = computed(() => ({ repo: PhCode, build: PhTerminal, serve: PhTerminal, start: PhTerminal, site: current.value?.mode === 'local' ? PhDesktop : PhGlobeSimple }))
 const EMPTY: Partial<Record<Field, string>> = { build: 'Not set. The dev server is filmed instead.', serve: 'Not set. The dev server is filmed instead.' }
-const VOICES = ['Michael', 'Adam', 'Heart', 'Bella', 'George', 'Emma']
+const VOICES = ['Heart', 'Bella', 'Emma', 'Michael', 'George', 'Adam']
 
 async function load() {
   const list = await $fetch<{ slug: string }[]>('/api/apps')

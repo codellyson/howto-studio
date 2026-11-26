@@ -95,7 +95,7 @@ Show the scripts to the user and wait for approval before recording; re-recordin
 python3 $SKILL/scripts/voice.py <project> <guide> [voice]
 ```
 
-The default voice is `am_michael`. Kokoro runs locally, so script text leaves no machine and there's no per-use cost. To let the user choose, generate the same sentence with a few voices: `am_michael`, `am_adam`, `af_heart`, `af_bella`, `bm_george`, `bf_emma`. Re-run this for a guide whenever its script text changes.
+The default voice is `af_heart`, the clearest Kokoro voice. Kokoro runs locally, so script text leaves no machine and there's no per-use cost. To let the user choose, generate the same sentence with a few voices, best first: `af_heart`, `af_bella`, `bf_emma`, `am_michael`, `bm_george`, `am_adam`. Re-run this for a guide whenever its script text changes.
 
 ## 3. Sign in
 

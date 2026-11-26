@@ -205,7 +205,7 @@ ${part}
 The invented data this video needs was prepared after the script was written (see "## Faked data" in the notes). If a step fails because a request isn't answered, add that one answer to the hooks and carry on. The script was written from the code, without opening the app. Build this video's take live with drive.cjs, as "Build the take live" in section 4 says: one step at a time in the real page, choosing targets from the page it prints. Where a label on screen differs from the script's wording, correct the script (keep its meaning) and note it in scripts/${guide}/notes.md. Faked data and anything else the whole app needs belong in takes.cjs (site, blockWrites, hooks); add to it only what this video needs, and never write this video's steps there. Run drive.cjs check, then stop, before filming.
 
 Film this video now, following sections 2 to 5 for ${guide}:
-- Make the voice with voice "${VOICES[app.voice] ?? 'am_michael'}".
+- Make the voice with voice "${VOICES[app.voice] ?? 'af_heart'}".
 - Write or update this video's function in takes.cjs, using the repository section and scripts/${guide}/notes.md.
 - ${writes}
 - Record (up to three tries) and cut. The run is done when final/${guide}.mp4 and final/${guide}.lines.json exist.

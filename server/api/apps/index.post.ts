@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
   const name = basename(repo)
   let slug = slugify(name)
   for (let i = 2; listApps().some(a => a.slug === slug); i++) slug = `${slugify(name)}-${i}`
-  const app: AppConfig = { slug, name: name.charAt(0).toUpperCase() + name.slice(1), repo, site: site.origin, voice: 'Michael', fakeSaves: true, ...(mode === 'local' ? { mode, start } : {}) }
+  const app: AppConfig = { slug, name: name.charAt(0).toUpperCase() + name.slice(1), repo, site: site.origin, voice: 'Heart', fakeSaves: true, ...(mode === 'local' ? { mode, start } : {}) }
   writeApp(app)
   startConnect(app)
   return { slug }

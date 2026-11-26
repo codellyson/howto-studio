@@ -18,7 +18,7 @@ except ImportError:
 kokoro = kokoro_onnx.Kokoro(MODEL, VOICES) if kokoro_onnx and os.path.exists(MODEL) and os.path.exists(VOICES) else None
 
 project, guide = sys.argv[1], sys.argv[2]
-voice = sys.argv[3] if len(sys.argv) > 3 else 'am_michael'
+voice = sys.argv[3] if len(sys.argv) > 3 else 'af_heart'
 out = os.path.abspath(os.path.join(project, 'audio', guide))
 os.makedirs(out, exist_ok=True)
 env = dict(os.environ)
