@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process'
-import { existsSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 export const VOICES: Record<string, string> = { Michael: 'am_michael', Adam: 'am_adam', Heart: 'af_heart', Bella: 'af_bella', George: 'bm_george', Emma: 'bf_emma' }
@@ -165,7 +165,7 @@ Write the script. Then write the notes: the saves this video makes, which are on
 
 // Before filming: make sure every read and save this video makes is answered with invented data, so filming only
 // has to find targets. Checked against the real pages with drive.cjs, without building the take.
-export function startFakes(app: AppConfig, guide: string) {
+export function startFakes(app: AppConfig, guide: string, then?: () => void) {
   const dir = appDir(app.slug)
   const prompt = `${shared(app, guide)}
 
@@ -174,7 +174,16 @@ Prepare the invented data this video needs, before anyone films it. Do not build
 2. From the app's code, list every request the pages in this video make (reads) and every save its steps make. For each one hooks.setup does not answer yet, add an answer that tells this video's story with the same invented people and records the app already uses. A save must return what the client expects and change the state the next reads show (a card that moves, a status that changes). Keep other videos working.
 3. Check the reads: run node ${SKILL}/scripts/drive.cjs ${dir} ${guide} start, then open each page the video shows (drive.cjs open /path). Each answer lists REQUESTS NOT ANSWERED; fix hooks until none are left for this video's pages. Then drive.cjs stop.
 4. Write what you faked, briefly, at the end of ${dir}/scripts/${guide}/notes.md under "## Faked data".`
-  return runClaude(key(app.slug, guide), 'fakes', prompt, { cwd: dir, env: guideEnv(app), ...onThisMac(app) })
+  return runClaude(key(app.slug, guide), 'fakes', prompt, {
+    cwd: dir, env: guideEnv(app), ...onThisMac(app),
+    onDone: then && (() => { setTimeout(then, 1500) }),
+  })
+}
+
+// Scripts written before the demo-data step existed, or imported, never had it.
+const fakesMissing = (app: AppConfig, guide: string) => {
+  const notes = join(appDir(app.slug), 'scripts', guide, 'notes.md')
+  return !!app.fakeSaves && !(existsSync(notes) && readFileSync(notes, 'utf8').includes('## Faked data'))
 }
 
 export function startChange(app: AppConfig, guide: string, request: string) {
@@ -185,7 +194,8 @@ Keep the table format and the line numbering in order. If the request is about t
   return runClaude(key(app.slug, guide), 'change', prompt, { cwd: appDir(app.slug) })
 }
 
-export function startRecord(app: AppConfig, guide: string, from?: string) {
+export function startRecord(app: AppConfig, guide: string, from?: string, fakesDone = false) {
+  if (!fakesDone && fakesMissing(app, guide)) return startFakes(app, guide, () => { try { startRecord(readApp(app.slug), guide, from, true) } catch {} })
   const writes = app.fakeSaves
     ? `${app.mode === 'local' ? 'The app runs on this Mac, but its data may be shared' : 'The site is live'}: fake every write as the skill describes, block everything else to its host, and confirm the data is unchanged before and after.`
     : 'Writes may go through only if this is a test environment; register afterTake to undo each one. If it looks like production, fake them instead.'

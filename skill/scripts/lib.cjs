@@ -19,12 +19,15 @@ function profileDir() {
 
 // What every browser that films or rehearses a take needs: writes to protected hosts aborted (and listed in
 // `blocked`), and web fonts kept after their first fetch so a slow font never films as the fallback.
+// Analytics and error reports: still aborted, but they change nothing the viewer sees, so they never fail a take.
+const TELEMETRY = [/\/events\/batch\b/, /\/(analytics|telemetry|collect|track|beacon|rum|vitals|metrics|log)(\/|\?|$)/i, /sentry|google-analytics|googletagmanager|posthog|segment\.io|mixpanel|amplitude|hotjar|clarity\.ms|cdn-cgi/i];
+
 async function prepare(ctx, config, out, blocked = new Set()) {
   for (const pattern of config.blockWrites || []) {
     await ctx.route(pattern, (r) => {
       const req = r.request();
       if (req.method() === 'GET') return r.continue();
-      if (!(config.ignoreBlocked || []).some((x) => x.test(req.url()))) blocked.add(`${req.method()} ${req.url()}`);
+      if (![...TELEMETRY, ...(config.ignoreBlocked || [])].some((x) => x.test(req.url()))) blocked.add(`${req.method()} ${req.url()}`);
       return r.abort();
     });
   }
@@ -50,4 +53,4 @@ async function prepare(ctx, config, out, blocked = new Set()) {
   return blocked;
 }
 
-module.exports = { playwright, profileDir, prepare };
+module.exports = { playwright, profileDir, prepare, TELEMETRY };

@@ -16,7 +16,7 @@ const http = require('http');
 const os = require('os');
 const path = require('path');
 const { spawn, execFileSync } = require('child_process');
-const { playwright, profileDir, prepare } = require('./lib.cjs');
+const { playwright, profileDir, prepare, TELEMETRY } = require('./lib.cjs');
 const steps = require('./steps.cjs');
 
 const project = path.resolve(process.argv[2]);
@@ -46,7 +46,7 @@ async function openBrowser() {
   // Requests to the app that failed or weren't answered: usually a fake the take still needs.
   const failed = new Set();
   const site = process.env.GUIDE_SITE || config.site || '';
-  const ours = (u) => { try { return new URL(u).host === new URL(site).host; } catch { return false; } };
+  const ours = (u) => { try { return new URL(u).host === new URL(site).host && !TELEMETRY.some((x) => x.test(u)); } catch { return false; } };
   page.on('response', (r) => { if (r.status() >= 400 && ours(r.url())) failed.add(`${r.status()} ${r.request().method()} ${new URL(r.url()).pathname}`); });
   page.on('requestfailed', (r) => { if (ours(r.url()) && !/\.(js|css|woff2?|png|svg|ico)(\?|$)/.test(r.url())) failed.add(`failed ${r.method()} ${new URL(r.url()).pathname}`); });
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -174,7 +174,11 @@ const print = (r) => { console.log(r.text); process.exitCode = r.ok ? 0 : 1; };
     const b = await openBrowser();
     try {
       await replay(b, take());
-      console.log(`The whole take runs.${writes(b)}`);
+      // A blocked save fails the cut after a full take, so it fails here, in seconds.
+      if (b.blocked.size) {
+        console.log(`The take runs, but it tried to save without a fake (filming would be refused):${writes(b)}\nAnswer these in takes.cjs hooks, or add them to ignoreBlocked if they change nothing on screen.`);
+        process.exitCode = 1;
+      } else console.log(`The whole take runs.${writes(b)}`);
     } catch (e) {
       console.log(`Fails at ${e.message}${writes(b)}\n\nPAGE (${b.page.url()}):\n${await steps.snapshot(b.page)}`);
       process.exitCode = 1;
